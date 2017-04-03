@@ -1,0 +1,202 @@
+---
+title: "variants_logit_wecare_only_Mar2017"
+output: html_document
+---
+
+started: Alexey Larionov, 26Mar2017  
+last updated: Alexey Larionov, 27Mar2017  
+
+# Summary
+
+Make QQ plot for variants simple logit cbc vs ubc:  
+to see whether there is an inflation and how the methods work  
+
+# start_section
+
+```{r start_section}
+
+# Start time
+Sys.time()
+
+# Folders
+setwd("/scratch/medgen/scripts/wecare_stat_03.17/scripts")
+source_data_folder <- "/scratch/medgen/scripts/wecare_stat_03.17/source_data"
+interim_data_folder <- "/scratch/medgen/scripts/wecare_stat_03.17/interim_data"
+results_folder <- "/scratch/medgen/scripts/wecare_stat_03.17/results"
+
+```
+
+# load_data
+
+```{r load_data}
+
+# Load data
+load(paste(interim_data_folder, "s07a_filter_by_variant_effect_wecare_only_Mar2017.RData", sep="/"))
+
+```
+
+# check_data
+
+```{r check_data}
+
+ls()
+
+dim(wecare_genotypes.mx)
+class(wecare_genotypes.mx)
+wecare_genotypes.mx[1:5,1:5]
+
+dim(wecare_phenotypes.df)
+str(wecare_phenotypes.df)
+wecare_phenotypes.df[1:5,1:5]
+
+dim(wecare_variants.df)
+colnames(wecare_variants.df)
+wecare_variants.df[1:5,1:5]
+
+dim(wecare_kgen.df)
+colnames(wecare_kgen.df)
+wecare_kgen.df[1:5,1:5]
+
+dim(wecare_exac.df)
+colnames(wecare_exac.df)
+wecare_exac.df[1:5,1:5]
+
+# Check consistency of rownames and colnames
+sum(colnames(wecare_genotypes.mx) != rownames(wecare_phenotypes.df))
+sum(rownames(wecare_genotypes.mx) != rownames(wecare_variants.df))
+sum(rownames(wecare_genotypes.mx) != rownames(wecare_kgen.df))
+sum(rownames(wecare_genotypes.mx) != rownames(wecare_exac.df))
+
+```
+
+# prepare_data_for_analysis
+
+No missed data in outcome or eigenvectors  
+Impute missed data for genotypes  
+
+```{r prepare_data_for_analysis}
+
+# Outcomes
+Y <- wecare_phenotypes.df$cc
+sum(is.na(Y)) # 0
+#length(Y)
+#sum(Y)
+
+# Genotypes: transpose non-aggregated variants and impute missed data
+G <- t(wecare_genotypes.mx)
+G <- apply(G, 2, function(v) { ifelse(is.na(v), mean(v, na.rm=T), v) })
+sum(is.na(G)) # 0
+
+# Eigenvectors
+E <- wecare.eigen$vectors[,c(1:3)]  
+sum(is.na(E)) # 0
+
+```
+
+# logit_regression
+
+< 10 min  
+warnings=FALSE  
+Recurrent warning: glm.fit: fitted probabilities numerically 0 or 1 occurred  
+
+```{r logit_regression, warning=FALSE}
+
+# Write header to output matrix 
+# (do not use data frame here: it will play with rbind!)
+result.mx <- matrix(ncol=4, nrow=0) 
+colnames(result.mx) <- c("var_id", "p_x", "p_xe", "p_lrt")
+
+# For each variant
+for(v in 1:nrow(wecare_variants.df)){
+  
+  # Get variant ID
+  var_id <- as.vector(wecare_variants.df$SplitVarID[v])
+
+  # Get vector of genotypes  
+  X <- G[,v]
+
+  # Calculate logit regression
+  reg_x <- glm(Y ~ X, family=binomial)
+  reg_e <- glm(Y ~ E, family=binomial)
+  reg_xe <- glm(Y ~ X + E, family=binomial)
+
+  # Get p-values
+  p_x <- summary(reg_x)$coef["X", "Pr(>|z|)"]
+  p_xe <- summary(reg_xe)$coef["X", "Pr(>|z|)"]
+  
+  # Calculate p-value estimate using LRT?
+  chi_stat_lrt = 2*(logLik(reg_xe) - logLik(reg_e))
+  p_lrt = 1 - pchisq(chi_stat_lrt, df=1) # df??
+
+  # Additionally: get an alteranative p-value from anova(reg) ??
+  # anova(reg_x, reg_xe) ...
+  
+  # Record output to results table (p being converted to char)
+  result.mx <- rbind(result.mx, c(var_id, p_x, p_xe, p_lrt))
+  
+} # next variant
+
+# Clean-up
+rm(X, Y, G, E, v, var_id, reg_x, reg_e, reg_xe, chi_stat_lrt, p_x, p_xe, p_lrt)
+
+```
+
+# explore_result
+
+```{r explore_result}
+
+# Check 
+dim(result.mx)
+
+# Cojnvert p estimates to numeric
+result.df <- as.data.frame(result.mx)
+result.df$p_x <- as.double(as.vector(result.df$p_x))
+result.df$p_xe <- as.double(as.vector(result.df$p_xe))
+result.df$p_lrt <- as.double(as.vector(result.df$p_lrt))
+
+# Sort
+result.df <- result.df[order(result.df$p_lrt),]
+
+# --- Compare p-estimates --- #
+
+plot(result.df$p_x, result.df$p_xe, 
+     main="Simple glm, +/ eigenvectors", 
+     xlab="No eigenvectors", ylab="With 3 eigenvectors")
+abline(0,1,col="red",lwd=3)
+
+plot(result.df$p_xe, result.df$p_lrt, 
+     main="Simple glm vs lrt, (with 3 eigenvectors)",
+     xlab="glm", ylab="lrt")
+abline(0,1,col="red",lwd=3)
+
+# --- QQ-plots --- #
+
+source("f03_qqplot.R")
+qqunif.plot(result.df$p_xe, main="CBC vs UBC, 3 eigenvectors (simple glm)")
+qqunif.plot(result.df$p_lrt, main="CBC vs UBC, 3 eigenvectors (LRT)")
+
+# Clean-up
+rm(result.mx, qqunif.plot)
+
+```
+
+# save_results
+
+```{r save_results}
+
+save.image(paste(results_folder, "r08a_variants_logit_wecare_only_Mar2017.RData", sep="/"))
+
+write.table(result.df,
+            file=paste(results_folder, "r08a_variants_logit_wecare_only_Mar2017.txt", sep="/"))
+
+```
+
+# final_section
+
+```{r final_section}
+
+ls()
+sessionInfo()
+Sys.time()
+
+```

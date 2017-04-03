@@ -1,0 +1,340 @@
+---
+title: "SKAT_wecare_only_Mar2017"
+output: html_document
+---
+
+started: Alexey Larionov, 27Mar2017  
+last updated: Alexey Larionov, 27Mar2017  
+
+# Summary
+
+SKAT cbc vs ubc, wecare only  
+Runs ~10 min
+
+# start_section
+
+```{r start_section}
+
+# Start time
+Sys.time()
+
+# Folders
+setwd("/scratch/medgen/scripts/wecare_stat_03.17/scripts")
+source_data_folder <- "/scratch/medgen/scripts/wecare_stat_03.17/source_data"
+interim_data_folder <- "/scratch/medgen/scripts/wecare_stat_03.17/interim_data"
+results_folder <- "/scratch/medgen/scripts/wecare_stat_03.17/results"
+
+# Libraries & functions
+library(SKAT)
+source("f02_tryCatchAL.R") # for custom error handling
+source("f03_qqplot.R") # for nice qq-plots
+
+```
+
+# load_data
+
+```{r load_data}
+
+# Load data
+load(paste(interim_data_folder, "s07a_filter_by_variant_effect_wecare_only_Mar2017.RData", sep="/"))
+
+```
+
+# check_data
+
+```{r check_data}
+
+ls()
+
+dim(wecare_genotypes.mx)
+class(wecare_genotypes.mx)
+wecare_genotypes.mx[1:5,1:5]
+
+dim(wecare_phenotypes.df)
+str(wecare_phenotypes.df)
+wecare_phenotypes.df[1:5,1:5]
+
+dim(wecare_variants.df)
+colnames(wecare_variants.df)
+wecare_variants.df[1:5,1:5]
+
+dim(wecare_kgen.df)
+colnames(wecare_kgen.df)
+wecare_kgen.df[1:5,1:5]
+
+dim(wecare_exac.df)
+colnames(wecare_exac.df)
+wecare_exac.df[1:5,1:5]
+
+# Check consistency of rownames and colnames
+sum(colnames(wecare_genotypes.mx) != rownames(wecare_phenotypes.df))
+sum(rownames(wecare_genotypes.mx) != rownames(wecare_variants.df))
+sum(rownames(wecare_genotypes.mx) != rownames(wecare_kgen.df))
+sum(rownames(wecare_genotypes.mx) != rownames(wecare_exac.df))
+
+```
+
+# calculate_afs
+
+```{r calculate_afs}
+
+# tobedone - for custom weights in controls only ?
+
+```
+
+
+# prepare_data_for_analysis
+
+No missed data in outcomes, covariates or eigenvectors  
+Impute missed data for genotypes  
+
+```{r prepare_data_for_analysis}
+
+# Outcomes
+Y <- wecare_phenotypes.df$cc
+sum(is.na(Y)) # 0
+
+# Genotypes: transpose non-aggregated variants and DO NOT impute missed data
+# (they are handled by SKAT)
+G <- t(wecare_genotypes.mx)
+#G <- apply(G, 2, function(v) { ifelse(is.na(v), mean(v, na.rm=T), v) })
+#sum(is.na(G)) # 0
+
+# Eigenvectors
+E <- wecare.eigen$vectors[,c(1:3)]  
+sum(is.na(E)) # 0
+
+# Treatment
+hormone <- wecare_phenotypes.df$hormone
+chemo <- wecare_phenotypes.df$chemo_cat != "no"
+treatment <- as.integer(chemo | hormone)
+sum(is.na(treatment)) # 0
+
+# Number of pregnancies
+num_preg <- as.integer(wecare_phenotypes.df$num_preg)
+sum(is.na(num_preg)) # 0
+
+# Lobular pathology - excluded because of a missed vcalue?
+#lobular <- wecare_phenotypes.df$hist_cat == "lobular"
+#sum(is.na(lobular)) # 1
+
+# Covariates: 
+C <- cbind(treatment, num_preg)
+sum(is.na(C)) # 0
+
+# Genes
+genes=unique(as.vector(wecare_variants.df$SYMBOL))
+sum(is.na(genes)) # 0
+
+# Clean-up
+rm(chemo, hormone, treatment, num_preg) # lobular
+
+```
+
+# outputs_headers
+
+```{r outputs_headers}
+
+# Prepare header
+header=c("gene", "num_var", "p_single_variant_test", "p_burden", "p_skat", "note")
+
+# Write header to output matrix 
+# (do not use data frame here: it will play with rbind!)
+result.mx <- matrix(ncol=6, nrow=0) 
+colnames(result.mx) <- header
+
+# Write header to output file
+results_file="r08a_2_SKAT_wecare_only_Mar2017.txt"
+write(paste(header, sep="", collapse="\t"), 
+      file=paste(results_folder, results_file, sep="/"))
+
+# Clean-up
+rm(header)
+
+```
+
+# SKAT
+
+set warning=FALSE ?  
+
+```{r SKAT}
+
+# Calculate SKAT null model (the same for all genes)
+skat_null <- SKAT_Null_Model(Y ~ C + E, out_type="D")
+# D for the dichotomous outcome
+
+#genes <- genes[1:100]
+
+# For each gene
+for(gene in genes){
+
+  #gene="ATM" # 15 variants
+  #gene="GABRD" # 1 variant
+  
+  # Get AFs in controls (ubc)
+  # For custom weights ??
+  
+  # Get variants
+  vars <- as.vector(wecare_variants.df[wecare_variants.df$SYMBOL==gene, "SplitVarID"])
+  
+  # Get number of variants
+  num_vars <- length(vars)
+    
+  # Get vector of genotypes  
+  X <- G[,vars]
+
+  # --- Calculate SKAT tests --- #
+  
+  # If there is one variant only
+  if(num_vars == 1){
+
+    # Aggregating variants (burden or skat) is irelevant
+    p_burden <- NA
+    p_skat <- NA
+  
+    # Calculate test for single variant
+    single_variant_test <- tryCatchAL(SKATBinary_Single(X, skat_null))
+    
+    # Get informatin about erors/warnings 
+    # (see details in tryCarchAL function)
+    single_variant_test_result <- single_variant_test$info
+    
+    # Compile output values
+    if(single_variant_test_result == "error"){
+      note <- "single_variant_test_error"
+      p_single <- NA
+    }else{
+      note <- paste("single_variant_test_", single_variant_test_result, sep="")
+      p_single <- single_variant_test$value$p.value
+    }
+    
+    # Clean-up
+    rm(single_variant_test, single_variant_test_result)
+    
+  # If there are several variants in the gene  
+  }else{
+    
+    # Single-variant test is irrelevant
+    p_single <- NA
+        
+    # Calculate burden test (with default weights beta[1,25])
+    burden_test <- tryCatchAL(SKATBinary(X, skat_null, method="Burden"))
+
+    # Get informatin about erors/warnings 
+    # (see details in tryCarchAL function)
+    burden_test_result <- burden_test$info
+    
+    if(burden_test_result == "error"){
+      note <- "burden_test_error, "
+      p_burden <- NA
+    }else{
+      note <- paste("burden_test_", burden_test_result, ", ", sep="")
+      p_burden <- burden_test$value$p.value
+    }
+    
+    # Clean-up
+    rm(burden_test, burden_test_result)
+    
+    # Calculate SKAT test (with default weights beta[1,25])
+    skat_test <- tryCatchAL(SKATBinary(X, skat_null, method="SKAT"))
+
+    # Get informatin about erors/warnings 
+    # (see details in tryCarchAL function)
+    skat_test_result <- skat_test$info
+
+    if(skat_test_result == "error"){
+      note <- paste(note, "skat_test_error", sep="")
+      p_skat <- NA
+    }else{
+      note <- paste(note, "skat_test_", skat_test_result, sep="")
+      p_skat <- skat_test$value$p.value
+    }
+
+    # Clean-up
+    rm(skat_test, skat_test_result)
+    
+  }
+  
+  # Add result to file
+  write(paste(c(gene, num_vars, p_single, p_burden, p_skat, note), sep="", collapse="\t"), 
+        file=paste(results_folder, results_file, sep="/"), append = TRUE)
+  
+  # Save results to matrix
+  result.mx <- rbind(result.mx, c(gene, num_vars, p_single, p_burden, p_skat, note))
+  
+  # Clean-up
+  rm(vars, num_vars, X, p_single, p_burden, p_skat, note)
+
+} # next gene
+
+# Clean-up
+rm(Y, G, E, C, gene, genes, skat_null, tryCatchAL)
+
+```
+
+# explore_result
+
+```{r explore_result}
+
+# Cojnvert p estimates to numeric
+result.df <- as.data.frame(result.mx)
+result.df$num_var <- as.integer(as.vector(result.df$num_var))
+result.df$p_single_variant_test <- as.double(as.vector(result.df$p_single_variant_test))
+result.df$p_burden <- as.double(as.vector(result.df$p_burden))
+result.df$p_skat <- as.double(as.vector(result.df$p_skat))
+
+# Check 
+dim(result.df)
+summary(as.factor(result.df$note))
+
+# Sort
+#result.df <- result.df[order(result.df$p_lrt),]
+
+# --- Compare p-estimates --- #
+
+mean_p_values <- 
+  c(mean(result.df$p_single_variant_test, na.rm=TRUE), 
+    mean(result.df$p_burden, na.rm=TRUE),
+    mean(result.df$p_skat, na.rm=TRUE))
+names(mean_p_values) <- c("single","burden","skat")
+barplot(mean_p_values, main="Compare mean p-values")
+
+plot(result.df$p_burden, result.df$p_skat, 
+     main="P-values: Burden vs SKAT",
+     xlab="Burden", ylab="SKAT")
+abline(0,1,col="red",lwd=3)
+
+# --- QQ-plots --- #
+
+# Remove NAs (required by qqunif.plot)
+p_single <- result.df$p_single_variant_test[!is.na(result.df$p_single_variant_test)]
+p_burden <- result.df$p_burden[!is.na(result.df$p_burden)]
+p_skat <- result.df$p_skat[!is.na(result.df$p_skat)]
+
+# Plot
+qqunif.plot(p_single, main="CBC vs UBC: Single variant test")
+qqunif.plot(p_burden, main="CBC vs UBC: Burden")
+qqunif.plot(p_skat, main="CBC vs UBC: SKAT")
+
+# Clean-up
+rm(mean_p_values, result.mx, p_single, p_burden, p_skat, qqunif.plot, results_file)
+
+```
+
+# save_results
+
+```{r save_results}
+
+save.image(paste(results_folder, "r08a_2_SKAT_wecare_only_Mar2017.RData", sep="/"))
+
+```
+
+# final_section
+
+```{r final_section}
+
+ls()
+sessionInfo()
+Sys.time()
+
+```

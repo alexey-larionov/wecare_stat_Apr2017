@@ -1,0 +1,367 @@
+---
+title: "explore_wecare_vs_nfe_3ev_nfe_Mar2017"
+output: html_document
+---
+
+started: Alexey Larionov, 02Apr2017  
+last updated: Alexey Larionov, 02Apr2017  
+
+# Summary
+
+Look how number of events per gene relates to P
+
+# start_section
+
+```{r start_section}
+
+# Start time
+Sys.time()
+
+# Folders
+#/analysis/mtgroup_share
+#/scratch /medgen
+setwd("/analysis/mtgroup_share/scripts/wecare_stat_03.17/scripts")
+source_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_03.17/source_data"
+interim_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_03.17/interim_data"
+results_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_03.17/results"
+
+# Libraries & functions
+library(SKAT) # for adjusted qq-plots
+source("f03_qqplot.R") # for nice qq-plots
+
+```
+
+# load_glm_data
+
+```{r load_glm_data}
+
+# Load data
+load(paste(interim_data_folder, "s08a_wecare_vs_nfe_glm_3ev_Mar2017.RData", sep="/"))
+
+result_glm.df <- result.df
+rownames(result_glm.df) <- result_glm.df$gene
+rm(result.df)
+
+```
+
+# check_glm_data
+
+```{r check_glm_data}
+
+dim(wecare_nfe_genotypes.mx)
+class(wecare_nfe_genotypes.mx)
+wecare_nfe_genotypes.mx[1:5,1:5]
+
+dim(wecare_nfe_genes.df)
+class(wecare_nfe_genes.df)
+wecare_nfe_genes.df[1:5,]
+
+dim(wecare_nfe_kgen.df)
+colnames(wecare_nfe_kgen.df)
+wecare_nfe_kgen.df[1:5,1:5]
+
+dim(wecare_nfe_exac.df)
+colnames(wecare_nfe_exac.df)
+wecare_nfe_exac.df[1:5,1:5]
+
+dim(wecare_nfe_variants.df)
+str(wecare_nfe_variants.df)
+wecare_nfe_variants.df[1:5,1:5]
+
+dim(wecare_nfe_phenotypes.df)
+str(wecare_nfe_phenotypes.df)
+wecare_nfe_phenotypes.df[1:5,1:5]
+
+dim(result_glm.df)
+str(result_glm.df)
+result_glm.df[1:5,1:5]
+
+# Check consistency of rownames and colnames
+sum(colnames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_phenotypes.df))
+
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_kgen.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_exac.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_variants.df))
+
+```
+
+# load_skat_data
+
+```{r load_skat_data}
+
+# Load data
+load(paste(interim_data_folder, "r08c_wecare_vs_nfe_skat_3ev_nfe_Mar2017.RData", sep="/"))
+
+result_skat.df <- result.df
+rownames(result_skat.df) <- result_skat.df$gene
+rm(result.df)
+
+```
+
+# check_skat_data
+
+```{r check_skat_data}
+
+dim(wecare_nfe_genotypes.mx)
+class(wecare_nfe_genotypes.mx)
+wecare_nfe_genotypes.mx[1:5,1:5]
+
+dim(wecare_nfe_genes.df)
+class(wecare_nfe_genes.df)
+wecare_nfe_genes.df[1:5,]
+
+dim(wecare_nfe_kgen.df)
+colnames(wecare_nfe_kgen.df)
+wecare_nfe_kgen.df[1:5,1:5]
+
+dim(wecare_nfe_exac.df)
+colnames(wecare_nfe_exac.df)
+wecare_nfe_exac.df[1:5,1:5]
+
+dim(wecare_nfe_variants.df)
+str(wecare_nfe_variants.df)
+wecare_nfe_variants.df[1:5,1:5]
+
+dim(wecare_nfe_phenotypes.df)
+str(wecare_nfe_phenotypes.df)
+wecare_nfe_phenotypes.df[1:5,1:5]
+
+dim(result_skat.df)
+str(result_skat.df)
+result_skat.df[1:5,1:5]
+
+# Check consistency of rownames and colnames
+sum(colnames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_phenotypes.df))
+
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_kgen.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_exac.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_variants.df))
+
+```
+
+# prepare_data_frame_for_analysis
+
+```{r prepare_data_frame_for_analysis}
+
+# Look at the number of vars (skat only)
+plot(svt_burden_p~num_vars, data=result_skat.df)
+
+# Recollect the counts per gene
+hist(wecare_nfe_genes.df$counts_per_gene[wecare_nfe_genes.df$counts_per_gene <= 10], 
+     ylim=c(0,4000), labels = TRUE, breaks=c(0:10))
+
+# Make data frame with p-values and counts
+
+sel_genes.df <- wecare_nfe_genes.df[result_skat.df$gene,]
+sel_genes.df <- cbind(sel_genes.df, result_skat.df[result_skat.df$gene,c("svt_burden_p", "svt_burden_MAP", "svt_skat_p", "svt_skat_MAP")])
+sel_genes.df <- cbind(sel_genes.df, 
+                      p_lrt_nfe=result_glm.df[result_skat.df$gene,"p_lrt_nfe"],
+                      p_lrt_kgen50=result_glm.df[result_skat.df$gene,"p_lrt_kgen50"])
+
+# Plot lrt vs burden ...
+plot(p_lrt_nfe~svt_burden_p, data=sel_genes.df)
+
+# p vs counts
+plot(p_lrt_nfe~counts_per_gene, data=sel_genes.df)
+plot(svt_burden_p~counts_per_gene, data=sel_genes.df[sel_genes.df$counts_per_gene < 10,])
+
+plot(svt_burden_p~counts_per_gene, data=sel_genes.df)
+plot(svt_burden_p~counts_per_gene, data=sel_genes.df[sel_genes.df$counts_per_gene < 10,])
+
+plot(counts_per_gene~svt_burden_p, data=sel_genes.df)
+plot(counts_per_gene~svt_burden_p, data=sel_genes.df[sel_genes.df$counts_per_gene < 10,])
+
+```
+
+# glm_lrt
+
+```{r glm_lrt}
+
+# Make qq-plots for svt+burden different minimal counts 
+
+min_counts <- 2
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$p_lrt_nfe[sel_counts & sel_genes.df$p_lrt_nfe != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, LRT, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+  
+min_counts <- 5
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$p_lrt_nfe[sel_counts & sel_genes.df$p_lrt_nfe != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, LRT, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 10
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$p_lrt_nfe[sel_counts & sel_genes.df$p_lrt_nfe != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, LRT, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 30
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$p_lrt_nfe[sel_counts & sel_genes.df$p_lrt_nfe != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, LRT, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 60
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$p_lrt_nfe[sel_counts & sel_genes.df$p_lrt_nfe != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, LRT, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+x <- sel_genes.df[sel_counts & sel_genes.df$p_lrt_nfe != 0,]
+x <- x[order(x$p_lrt_nfe),]
+x[1:20,]
+
+print("TRBV10-1 = T cell receptor beta variable 10-2")
+
+rm(x, min_counts, sel_counts)
+
+```
+
+# SKAT_svt_burden
+
+```{r SKAT_svt_burden}
+
+# Make qq-plots for svt+burden different minimal counts 
+
+min_counts <- 2
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$svt_burden_p[sel_counts & sel_genes.df$svt_burden_p != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, svt+burden, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+  
+min_counts <- 5
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$svt_burden_p[sel_counts & sel_genes.df$svt_burden_p != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, svt+burden, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 10
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$svt_burden_p[sel_counts & sel_genes.df$svt_burden_p != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, svt+burden, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 30
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$svt_burden_p[sel_counts & sel_genes.df$svt_burden_p != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, svt+burden, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 60
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$svt_burden_p[sel_counts & sel_genes.df$svt_burden_p != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, svt+burden, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+# Plot with SKAT
+
+min_counts <- 2
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+QQPlot_Adj(sel_genes.df$svt_burden_p[sel_counts & sel_genes.df$svt_burden_p != 0],
+           sel_genes.df$svt_burden_MAP[sel_counts & sel_genes.df$svt_burden_p != 0],
+           main=paste("wecare vs nfe, 3ev nfe, svt+burden, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 5
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+QQPlot_Adj(sel_genes.df$svt_burden_p[sel_counts & sel_genes.df$svt_burden_p != 0],
+           sel_genes.df$svt_burden_MAP[sel_counts & sel_genes.df$svt_burden_p != 0],
+           main=paste("wecare vs nfe, 3ev nfe, svt+burden, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 10
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+QQPlot_Adj(sel_genes.df$svt_burden_p[sel_counts & sel_genes.df$svt_burden_p != 0],
+           sel_genes.df$svt_burden_MAP[sel_counts & sel_genes.df$svt_burden_p != 0],
+           main=paste("wecare vs nfe, 3ev nfe, svt+burden, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 30
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+QQPlot_Adj(sel_genes.df$svt_burden_p[sel_counts & sel_genes.df$svt_burden_p != 0],
+           sel_genes.df$svt_burden_MAP[sel_counts & sel_genes.df$svt_burden_p != 0],
+           main=paste("wecare vs nfe, 3ev nfe, svt+burden, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 60
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+QQPlot_Adj(sel_genes.df$svt_burden_p[sel_counts & sel_genes.df$svt_burden_p != 0],
+           sel_genes.df$svt_burden_MAP[sel_counts & sel_genes.df$svt_burden_p != 0],
+           main=paste("wecare vs nfe, 3ev nfe, svt+burden, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+rm(min_counts, sel_counts)
+
+```
+
+# SKAT_svt_skat
+
+```{r SKAT_svt_skat}
+
+# Make qq-plots for svt+skat different minimal counts 
+
+min_counts <- 2
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$svt_skat_p[sel_counts & sel_genes.df$svt_skat_p != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, svt+skat, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+  
+min_counts <- 5
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$svt_skat_p[sel_counts & sel_genes.df$svt_skat_p != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, svt+skat, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 10
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$svt_skat_p[sel_counts & sel_genes.df$svt_skat_p != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, svt+skat, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 30
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$svt_skat_p[sel_counts & sel_genes.df$svt_skat_p != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, svt+skat, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 60
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+qqunif.plot(sel_genes.df$svt_skat_p[sel_counts & sel_genes.df$svt_skat_p != 0], 
+              main=paste("wecare vs nfe, 3ev nfe, svt+skat, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+# Plot with SKAT
+
+min_counts <- 2
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+QQPlot_Adj(sel_genes.df$svt_skat_p[sel_counts & sel_genes.df$svt_skat_p != 0],
+           sel_genes.df$svt_skat_MAP[sel_counts & sel_genes.df$svt_skat_p != 0],
+           main=paste("wecare vs nfe, 3ev nfe, svt+skat, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 5
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+QQPlot_Adj(sel_genes.df$svt_skat_p[sel_counts & sel_genes.df$svt_skat_p != 0],
+           sel_genes.df$svt_skat_MAP[sel_counts & sel_genes.df$svt_skat_p != 0],
+           main=paste("wecare vs nfe, 3ev nfe, svt+skat, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 10
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+QQPlot_Adj(sel_genes.df$svt_skat_p[sel_counts & sel_genes.df$svt_skat_p != 0],
+           sel_genes.df$svt_skat_MAP[sel_counts & sel_genes.df$svt_skat_p != 0],
+           main=paste("wecare vs nfe, 3ev nfe, svt+skat, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 30
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+QQPlot_Adj(sel_genes.df$svt_skat_p[sel_counts & sel_genes.df$svt_skat_p != 0],
+           sel_genes.df$svt_skat_MAP[sel_counts & sel_genes.df$svt_skat_p != 0],
+           main=paste("wecare vs nfe, 3ev nfe, svt+skat, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+min_counts <- 60
+sel_counts <- sel_genes.df$counts_per_gene > min_counts
+QQPlot_Adj(sel_genes.df$svt_skat_p[sel_counts & sel_genes.df$svt_skat_p != 0],
+           sel_genes.df$svt_skat_MAP[sel_counts & sel_genes.df$svt_skat_p != 0],
+           main=paste("wecare vs nfe, 3ev nfe, svt+skat, counts > ", min_counts, "\n(", sum(sel_counts), " genes x 676 cases)", sep=""))
+
+rm(min_counts, sel_counts)
+
+```
+
+# save_data
+
+```{r save_data}
+
+save.image(paste(interim_data_folder, "r08d_explore_wecare_vs_nfe_skat_3ev_nfe_Mar2017.RData", sep="/"))
+
+```
+
+# final_section
+
+```{r final_section}
+
+ls()
+sessionInfo()
+Sys.time()
+
+```
