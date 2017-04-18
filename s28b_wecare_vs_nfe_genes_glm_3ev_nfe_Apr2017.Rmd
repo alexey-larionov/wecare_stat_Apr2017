@@ -1,0 +1,625 @@
+---
+title: "nfe vs wecare: glm, aggregating by gene, weighting beta-1-25, 3 ev nfe, QQ-plots"
+output: html_document
+---
+
+started: Alexey Larionov, 25Mar2017  
+last updated: Alexey Larionov, 05Apr2017  
+
+# Summary
+
+Make QQ plot(s) for nfe vs wecare to see whether there is an inflation 
+(recommended by DC during the Skype meeting of 14Mar2017)
+
+3x nfe EV, **WEIGHTED** by beta(1,25)  
+
+# start_section
+
+```{r start_section}
+
+# Start time
+Sys.time()
+
+# Folders
+#/analysis/mtgroup_share
+#/scratch/medgen
+setwd("/analysis/mtgroup_share/scripts/wecare_stat_04.17/scripts")
+source_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/source_data"
+interim_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/interim_data"
+results_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/results"
+
+```
+
+# load_data
+
+```{r load_data}
+
+# Load data
+load(paste(interim_data_folder, "r07_pick_egenvectors_exclude_outliers_Apr2017.RData", sep="/"))
+
+```
+
+# check_data
+
+```{r check_data}
+
+dim(wecare_nfe_genotypes.mx)
+class(wecare_nfe_genotypes.mx)
+wecare_nfe_genotypes.mx[1:5,1:5]
+
+dim(wecare_nfe_kgen.df)
+colnames(wecare_nfe_kgen.df)
+wecare_nfe_kgen.df[1:5,1:5]
+
+dim(wecare_nfe_exac.df)
+colnames(wecare_nfe_exac.df)
+wecare_nfe_exac.df[1:5,1:5]
+
+dim(wecare_nfe_variants.df)
+str(wecare_nfe_variants.df)
+wecare_nfe_variants.df[1:5,1:5]
+
+dim(wecare_nfe_phenotypes.df)
+str(wecare_nfe_phenotypes.df)
+wecare_nfe_phenotypes.df[1:5,1:5]
+
+# Check consistency of rownames and colnames
+sum(colnames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_phenotypes.df))
+
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_kgen.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_exac.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_variants.df))
+
+```
+
+# invert_genotypes
+
+Invert genotypes for variants with total AF > 0.5  
+Similar to "flipping" genotypes that are not minor alleles in SKAT  
+
+```{r invert_genotypes}
+
+# Prepare tables for output
+wecare_nfe_variants_inv.df <- cbind(wecare_nfe_variants.df, 
+                     inverted=rep(FALSE,nrow(wecare_nfe_variants.df)),
+                     ac_inv=wecare_nfe_variants.df$ac_all,
+                     an_inv=wecare_nfe_variants.df$an_all,
+                     af_inv=wecare_nfe_variants.df$af_all)
+
+wecare_nfe_genotypes_inv.mx <- wecare_nfe_genotypes.mx
+
+# For each variant
+for(var in 1:nrow(wecare_nfe_variants_inv.df)){
+  
+  # If total AF > 0.5
+  if(wecare_nfe_variants_inv.df[var,"af_all"] > 0.5){
+    
+    # Flag variant
+    TRUE -> wecare_nfe_variants_inv.df[var, "inverted"]
+    
+    # Invert genotypes 
+    genotypes <- wecare_nfe_genotypes_inv.mx[var,]
+    genotypes_inv <- genotypes
+    0 -> genotypes_inv[genotypes == 2]
+    2 -> genotypes_inv[genotypes == 0]
+    genotypes_inv -> wecare_nfe_genotypes_inv.mx[var,]
+
+    # Calculate inverted AFs
+    ac_inv <- sum(genotypes_inv, na.rm=TRUE)
+    an_inv <- 2*sum(!is.na(genotypes_inv))
+    af_inv <- ac_inv/an_inv
+
+    # Add inverted AFs to the variants data.frame
+    wecare_nfe_variants_inv.df[var, c("ac_inv", "an_inv", "af_inv")] <- c(ac_inv, an_inv, af_inv)
+    
+    # Clean-up
+    rm(genotypes, genotypes_inv, ac_inv, an_inv, af_inv)
+    
+  }
+}
+
+# Number of invered variants
+sum(wecare_nfe_variants_inv.df$inverted) # 12,729
+
+# Some effects of inversion
+max(wecare_nfe_variants_inv.df$af_all) # ~0.99
+max(wecare_nfe_variants_inv.df$af_inv) # 0.5
+
+# clean-up
+rm(var)
+
+```
+
+# count_variants_and_alleles_per_gene
+
+Note that alleles are counted AFTER inversion ("flipping") and  
+before imputation and weighting     
+
+```{r count_variants_and_alleles_per_gene}
+
+# Get list of genes (get rid of NAs !)
+genes <- as.character(wecare_nfe_variants_inv.df$SYMBOL)
+length(genes)
+sum(is.na(genes))
+genes <- genes[!is.na(genes)]
+length(genes)
+genes <- unique(genes)
+length(genes)
+
+# Prepare table for output
+genes.mx <- matrix(nrow=0, ncol=3)
+colnames(genes.mx) <- c("gene", "num_var", "aggr_ac")
+
+# For each gene
+for(gene in genes){
+  
+  # Get list of variants
+  vars <- wecare_nfe_variants_inv.df$SYMBOL == gene
+  FALSE -> vars[is.na(vars)] # there are 147 variants not asociated with a gene
+  
+  # Get genotypes matrix
+  gt.mx <- wecare_nfe_genotypes_inv.mx[vars,]
+  
+  # Count variants and alleles
+  num_var <- sum(vars)
+  aggr_ac <- sum(gt.mx, na.rm=TRUE)
+  
+  # Record to result matrix
+  genes.mx <- rbind(genes.mx, c(gene, num_var, aggr_ac))
+  
+  # Clean-up
+  rm(vars, gt.mx, num_var, aggr_ac)
+  
+}
+
+# Check result
+dim(genes.mx)
+
+# Assign rownames
+genes -> rownames(genes.mx)
+
+# Convert to char to appropriate datatypes
+genes.df <- as.data.frame(genes.mx)
+genes.df$gene <- as.vector(genes.df$gene)
+genes.df$num_var <- as.numeric(as.vector(genes.df$num_var))
+genes.df$aggr_ac <-as.numeric(as.vector(genes.df$aggr_ac))
+str(genes.df)
+
+# Clean-up
+rm(genes.mx, gene)
+
+```
+
+# impute_missed_data
+
+Substitute NA with duplicated allelic frequency (after inversion)  
+Equivalent to the "fixed" approach in SKAT  
+
+```{r impute_missed_data}
+
+# Prepare matrix for output
+wecare_nfe_genotypes_inv_imp.mx <- wecare_nfe_genotypes_inv.mx
+
+# Fraction of missed data
+sum(is.na(wecare_nfe_genotypes_inv_imp.mx))/
+  (nrow(wecare_nfe_genotypes_inv_imp.mx)*ncol(wecare_nfe_genotypes_inv_imp.mx)) # ~80%
+
+# Impute missed data
+for(var in 1:nrow(wecare_nfe_genotypes_inv_imp.mx)){
+
+    # Get AF (corrected for the inverted variants)
+    af <- wecare_nfe_variants_inv.df[var,"af_inv"]
+    
+    # Impute missed genotypes
+    genotypes <- wecare_nfe_genotypes_inv_imp.mx[var,]
+    2*af -> genotypes[is.na(genotypes)]
+    genotypes -> wecare_nfe_genotypes_inv_imp.mx[var,]
+
+    # Clean-up
+    rm(af, genotypes)
+
+}
+
+# Check the result
+sum(is.na(wecare_nfe_genotypes_inv_imp.mx))
+
+# Clean-up
+rm(wecare_nfe_genotypes_inv.mx, var)
+
+```
+
+# weight_variants
+
+Weight by total AF using beta(0,25)  
+Default weighting in SKAT  
+
+```{r weight_variants}
+
+# Prepare tables for output
+wecare_nfe_variants_inv_wt.df <- wecare_nfe_variants_inv.df
+wecare_nfe_variants_inv_wt.df <- cbind(wecare_nfe_variants_inv_wt.df, weight=1)
+
+wecare_nfe_genotypes_inv_imp_wt.mx <- wecare_nfe_genotypes_inv_imp.mx
+
+# Apply weighting
+for(var in 1:nrow(wecare_nfe_genotypes_inv_imp_wt.mx)){
+  
+  # Get AF (recalculated for inverted variants)
+  af <- wecare_nfe_variants_inv_wt.df[var, "af_inv"]
+  
+  # Calculate weight
+  weight <- dbeta(af, 1, 25)
+  
+  # Write weight to variants table
+  weight -> wecare_nfe_variants_inv_wt.df[var,"weight"]
+  
+  # Apply weights to genotypes table
+  weight * wecare_nfe_genotypes_inv_imp_wt.mx[var,] -> 
+    wecare_nfe_genotypes_inv_imp_wt.mx[var,]
+  
+  # Clean-up
+  rm(af, weight)
+
+}
+
+# clean-up
+rm(var, wecare_nfe_genotypes_inv_imp.mx, wecare_nfe_variants_inv.df)
+
+```
+
+# remove_variants_witout_a_gene
+
+```{r remove_variants_witout_a_gene}
+
+# Remove variants w/o assignment to a gene
+vars_without_gene <- is.na(wecare_nfe_variants_inv_wt.df$SYMBOL)
+sum(vars_without_gene) # 147 of 274,037
+
+variants.df <- wecare_nfe_variants_inv_wt.df[!vars_without_gene,]
+genotypes.mx <- wecare_nfe_genotypes_inv_imp_wt.mx[!vars_without_gene,]
+
+sum(rownames(variants.df) != rownames(genotypes.mx))
+sum(colnames(genotypes.mx) != rownames(wecare_nfe_phenotypes.df))
+
+```
+
+# aggregate_variants_per_gene
+
+Aggregate inverted, imputed, weighted variants per gene  
+~1k genes per min: ~30 min for 20k genes
+
+```{r aggregate_variants_per_gene}
+
+# Prepare table for the result
+genes.mx <- matrix(nrow=0, ncol=ncol(genotypes.mx))
+colnames(genes.mx) <- colnames(genotypes.mx)
+
+#genes=c("ATM","LINC00115")
+
+# Aggregate (substitute NAs to 2*AF*Weight)
+for(gene in genes){
+  
+  #gene <- "ATM" # 16 vars
+  #gene <- "LINC00115" # 1 var
+  
+  # Gene's variants
+  vars <- as.vector(variants.df[variants.df$SYMBOL == gene, "SplitVarID"])
+  
+  # For a single variant per gene
+  if(length(vars) == 1){
+    
+    # Get genotypes vector: no need in aggregation
+    aggr_gt <- genotypes.mx[vars,]
+    
+  }else{ # for multiple variants per gene
+
+    # Get genotypes matrix
+    gt.mx <- genotypes.mx[vars,]
+    
+    # Aggregate
+    aggr_gt <- apply(gt.mx, 2, sum)
+    
+    # Clean-up
+    rm(gt.mx)
+    
+  }
+  
+  # Append
+  genes.mx <- rbind(genes.mx, aggr_gt)
+  
+  # Clean-up
+  rm(aggr_gt, vars)
+  
+}
+
+# Check results
+dim(genes.mx)
+
+# Add rownames
+genes -> rownames(genes.mx)
+
+# Clean-up
+rm(gene, genotypes.mx, variants.df)
+
+```
+
+# prepare_data_for_analysis
+
+No missed data in eigenvectors, outcomes or genotypes  
+
+```{r prepare_data_for_analysis}
+
+# Eigenvectors
+E <- as.matrix(wecare_nfe_phenotypes.df[,c("eig1_nfe","eig2_nfe","eig3_nfe")])
+E[1:5,]
+sum(is.na(E)) # 0
+
+# Outcomes
+Y <- ifelse(wecare_nfe_phenotypes.df$cc==-1, 0, 1)
+sum(is.na(Y)) # 0
+sum(Y) # 478
+sum(!Y) # 198
+
+# Genotypes: transpose non-aggregated variants
+G <- t(genes.mx)
+
+# Check data
+dim(G)
+G[1:5,1:5]
+sum(is.na(G)) # 0
+
+```
+
+# prepare_file_and_matrix_for_results
+
+```{r prepare_file_and_matrix_for_results}
+
+# Prepare header
+header <- c("gene", "p_glm_wald", "p_glm_anova_lrt", "p_glm_lrt")
+
+# Write header to output matrix 
+# (do not use data frame here: it will play with rbind!)
+result.mx <- matrix(ncol=length(header), nrow=0) 
+colnames(result.mx) <- header
+
+# Write header to output file
+results_file="r08b_wecare_vs_nfe_genes_glm_3ev_nfe_Apr2017.txt"
+write(paste(header, sep="", collapse="\t"), 
+      file=paste(results_folder, results_file, sep="/"))
+
+# Clean-up
+rm(header)
+
+```
+
+# logit_regression
+
+Reccurent warnings:  
+Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred  
+
+```{r logit_regression, warning=FALSE}
+
+#G <- G[,1:100]
+
+# For each variant
+for(gene in genes){
+  
+  # Get vector of aggregated genotypes  
+  X <- G[,gene]
+
+  # --- Calculate the regressions --- #
+  
+  regE <- glm(Y ~ E, family=binomial) # Null model
+  regXE <- glm(Y ~ X + E, family=binomial) # Complete model
+
+  # Wald (?) test
+  p_glm_wald <- summary(regXE)$coef["X", "Pr(>|z|)"]
+  
+  # Anova-LRT
+  anova_lrt <- anova(regE, regXE, test="LRT")
+  p_glm_anova_lrt <- anova_lrt["X", "Pr(>Chi)"]
+  
+  # LRT
+  chi_stat_lrt = 2*(logLik(regXE) - logLik(regE))
+  p_glm_lrt = 1 - pchisq(chi_stat_lrt, df=1) # df??
+  
+  # Clean-up
+  rm(regE, regXE, anova_lrt, chi_stat_lrt)
+  
+  # --- Record results (p being converted to char) --- #
+  
+  # Add result to matrix
+  result.mx <- rbind(result.mx, c(gene, p_glm_wald, p_glm_anova_lrt, p_glm_lrt))
+  
+  # Add result to file
+  write(paste(c(gene, p_glm_wald, p_glm_anova_lrt, p_glm_lrt), sep="", collapse="\t"), 
+        file=paste(results_folder, results_file, sep="/"), append = TRUE)
+
+  # Clean-up
+  rm(X, p_glm_wald, p_glm_anova_lrt, p_glm_lrt)
+  
+} # next variant
+
+# Check result
+dim(result.mx)
+
+# Assign rownames
+rownames(result.mx) <- result.mx[,"gene"]
+
+# Clean-up
+rm(gene, genes, G, Y, E, results_file)
+
+```
+
+# explore_result
+
+```{r explore_result}
+
+# Check consistency of rownames in results
+sum(rownames(result.mx) != rownames(genes.df))
+
+# Convert to data.frame and to numeric
+result.df <- as.data.frame(result.mx)
+
+result.df$gene <- as.vector(result.df$gene)
+
+result.df$p_glm_wald <- as.numeric(as.vector(result.df$p_glm_wald))
+result.df$p_glm_anova_lrt <- as.numeric(as.vector(result.df$p_glm_anova_lrt))
+result.df$p_glm_lrt <- as.numeric(as.vector(result.df$p_glm_lrt))
+
+str(result.df)
+
+# Sort result
+x <- result.df[order(result.df$p_glm_lrt),]
+x[1:20,]
+# Top 7:
+#TIMM8B           TIMM8B       1     122
+#TRBV10-1       TRBV10-1       3     684
+#OR8U1             OR8U1      46    7505
+#PRRT3             PRRT3       8     661
+#IGHJ5             IGHJ5      44     117
+#AC096579.13 AC096579.13     185     299
+#PRIM2             PRIM2      28    8001
+
+# TIMM8B
+# Translocase Of Inner Mitochondrial Membrane 8 Homolog B
+# Previously not associated with BC (quick googling)
+# One variant, virtually all alleles in wecare (2:956)
+#             ac_nfe ac_wecare inverted
+#Var000200152      2       956     TRUE
+wecare_nfe_variants_inv_wt.df[
+  wecare_nfe_variants_inv_wt.df$SYMBOL=="TIMM8B" & 
+    !is.na(wecare_nfe_variants_inv_wt.df$SYMBOL),
+  c("ac_nfe", "ac_wecare", "inverted")]
+
+# TRBV10-1
+# T Cell Receptor Beta Variable 10-1(Gene/Pseudogene)
+# Previously not associated with BC (quick googling)
+# Two variants are mainly in NFE
+# The one very common variant eliminated by weighting
+#             ac_nfe ac_wecare inverted
+#Var000140832     74       448    FALSE
+#Var000140838     77         5    FALSE
+#Var000140840     77         3    FALSE
+wecare_nfe_variants_inv_wt.df[
+  wecare_nfe_variants_inv_wt.df$SYMBOL=="TRBV10-1" & 
+    !is.na(wecare_nfe_variants_inv_wt.df$SYMBOL),
+  c("ac_nfe", "ac_wecare", "inverted")]
+
+# OR8U1
+# Olfactory Receptor Family 8 Subfamily U Member 1
+# Previously not associated with BC (quick googling)
+# # Highly mutated in colon, but not breast cancer
+# http://bmcgenomics.biomedcentral.com/articles/10.1186/1471-2164-13-S4-S9
+# 46 variants, most are common
+# Noticeable excess in NFE over WECARE
+# However, not immediately clear why it was ranked so high
+x <- wecare_nfe_variants_inv_wt.df[
+  wecare_nfe_variants_inv_wt.df$SYMBOL=="OR8U1" & 
+    !is.na(wecare_nfe_variants_inv_wt.df$SYMBOL),
+  c("ac_nfe", "ac_wecare", "inverted")]
+
+# Look at correlation of diferent p-estimates
+# Anova did not correlate with anything (when was calculated wrongly)
+# glm(wald?) more or less correlate with lrt
+
+plot(p_glm_wald~p_glm_anova_lrt, data=result.df)
+plot(p_glm_lrt~p_glm_wald, data=result.df)
+plot(p_glm_lrt~p_glm_anova_lrt, data=result.df)
+
+# Look at histograms of p-values
+hist(result.df$p_glm_wald)
+hist(result.df$p_glm_anova_lrt)
+hist(result.df$p_glm_lrt)
+
+sum(result.df$p_glm_wald == 0)
+sum(result.df$p_glm_anova_lrt == 0)
+sum(result.df$p_glm_lrt == 0)
+
+sum(result.df$p_glm_wald == 1)
+sum(result.df$p_glm_anova_lrt == 1)
+sum(result.df$p_glm_lrt == 1)
+
+# Load function for nice qq-plots
+source("f03_qqunif_plot.R")
+
+p_wald <- result.df$p_glm_wald[!result.df$p_glm_wald == 0]
+p_anova_lrt <- result.df$p_glm_anova_lrt[!result.df$p_glm_anova_lrt == 0]
+p_lrt <- result.df$p_glm_lrt[!result.df$p_glm_lrt == 0]
+
+qqunif.plot(p_wald, main=paste("WECARE vs NFE\n(", length(p_wald), " all genes, 3 nfe eigenvectors, glm lrt)"))
+qqunif.plot(p_anova_lrt, main=paste("WECARE vs NFE\n(", length(p_anova_lrt), " all genes, 3 nfe eigenvectors, glm lrt)"))
+qqunif.plot(p_lrt, main=paste("WECARE vs NFE\n(", length(p_lrt), " all genes, 3 nfe eigenvectors, glm lrt)"))
+
+sum(p_lrt < 0.0000022)
+p_lrt_clean <- p_lrt[p_lrt > 0.0000022]
+qqunif.plot(p_lrt_clean, main=paste("WECARE vs NFE\n(", length(p_lrt_clean), " all genes, 3 nfe eigenvectors, glm lrt)"))
+
+hist(genes.df$num_var)
+hist(genes.df$aggr_ac)
+
+hist(genes.df$num_var[genes.df$num_var<101], breaks=c(0:100),
+     main="Variants per gene (zoom < 100)", xlab="variants per gene")
+
+hist(genes.df$aggr_ac[genes.df$aggr_ac<101], breaks=c(0:100),
+     main="Aggregated allele counts per gene (zoom < 100)", xlab="Aggregated allele counts per gene")
+
+# Clean-up
+rm(p_wald, p_anova_lrt, p_lrt, p_lrt_clean, result.mx, x)
+
+```
+
+# data_summary
+
+```{r data_summary}
+
+dim(wecare_nfe_genotypes.mx)
+class(wecare_nfe_genotypes.mx)
+wecare_nfe_genotypes.mx[1:5,1:5]
+
+dim(wecare_nfe_kgen.df)
+colnames(wecare_nfe_kgen.df)
+wecare_nfe_kgen.df[1:5,1:5]
+
+dim(wecare_nfe_exac.df)
+colnames(wecare_nfe_exac.df)
+wecare_nfe_exac.df[1:5,1:5]
+
+dim(wecare_nfe_variants.df)
+str(wecare_nfe_variants.df)
+wecare_nfe_variants.df[1:5,1:5]
+
+dim(wecare_nfe_phenotypes.df)
+str(wecare_nfe_phenotypes.df)
+wecare_nfe_phenotypes.df[1:5,1:5]
+
+dim(result.df)
+str(result.df)
+result.df[1:5,]
+
+# Check consistency of rownames and colnames
+sum(colnames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_phenotypes.df))
+
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_kgen.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_exac.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_variants.df))
+
+```
+
+# save_data
+
+```{r save_data}
+
+save.image(paste(interim_data_folder, "s08b_wecare_vs_nfe_genes_glm_3ev_nfe_Apr2017.RData", sep="/"))
+
+```
+
+# final_section
+
+```{r final_section}
+
+ls()
+sessionInfo()
+Sys.time()
+
+```

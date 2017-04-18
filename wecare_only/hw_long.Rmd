@@ -1,0 +1,252 @@
+---
+title: "explore HWE - wecare only"
+output: html_document
+---
+
+started: Alexey Larionov, 2016  
+last updated: Alexey Larionov, 12Apr2017
+
+# Summary
+
+Calculates AFs and HWE for 480 cases (before excluding eigenvectors outliers)  
+
+# start_section
+
+```{r start_section}
+
+# Time stamp
+Sys.time()
+
+# Folders
+#/analysis/mtgroup_share
+#/scratch/medgen
+setwd("/analysis/mtgroup_share/scripts/wecare_stat_04.17/scripts/wecare_only")
+source_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/source_data"
+interim_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/scripts/wecare_only/interim_data"
+results_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/scripts/wecare_only/results"
+
+# Required libraries
+library(ggplot2)
+library(plotly)
+source("f04_hw_AL.R")
+source("f03_qqunif_plot.R")
+
+```
+
+# load_data
+
+```{r load_data}
+
+load(paste(interim_data_folder, "r04_filter_cases_and_variants_wecare_only.RData", sep="/"))
+
+```
+
+# check_data
+
+```{r check_data}
+
+ls()
+
+dim(genotypes.mx)
+class(genotypes.mx)
+genotypes.mx[1:5,1:5]
+
+dim(phenotypes.df)
+str(phenotypes.df)
+phenotypes.df[1:5,1:5]
+
+dim(variants.df)
+colnames(variants.df)
+variants.df[1:5,1:5]
+
+dim(kgen.df)
+colnames(kgen.df)
+kgen.df[1:5,1:5]
+
+dim(exac.df)
+colnames(exac.df)
+exac.df[1:5,1:5]
+
+# Check consistency of colnames and rownames
+sum(colnames(genotypes.mx) != rownames(phenotypes.df))
+
+sum(rownames(genotypes.mx) != rownames(variants.df))
+sum(rownames(genotypes.mx) != rownames(kgen.df))
+sum(rownames(genotypes.mx) != rownames(exac.df))
+
+```
+
+# recalculate_total_AFs
+
+Used for selecting common variants for eigenvectors computation.  
+Could be recalculated later after exclusion of eigenvectors outliers.  
+
+```{r recalculate_total_AFs}
+
+# Function to calculate AN
+get_allele_number.udf <- function(x){2*sum(!is.na(x))}
+
+# Rename AF fields in the variants table
+vars_colnames <- colnames(variants.df)
+"ac_raw" -> vars_colnames[ vars_colnames == "AC" ]
+"an_raw" -> vars_colnames[ vars_colnames == "AN" ]
+"af_raw" -> vars_colnames[ vars_colnames == "AF" ]
+vars_colnames -> colnames(variants.df)
+
+# Calculate total wecare ac, an and af
+ac_all <- apply(genotypes.mx, 1, sum, na.rm=TRUE)
+an_all <- apply(genotypes.mx, 1, get_allele_number.udf)
+af_all <- ac_all/an_all
+
+# Add new AFs to the variants table
+variants.df <- cbind(variants.df, ac_all, an_all, af_all)
+
+# Clean-up
+rm(get_allele_number.udf, ac_all, an_all, af_all, vars_colnames)
+
+```
+
+# calculate_ubc_AFs
+
+```{r calculate_ubc_AFs}
+
+# Function to calculate AN
+get_allele_number.udf <- function(x){2*sum(!is.na(x))}
+
+# Prepare genotypes table
+ubc_cases <- phenotypes.df$cc == 0 
+sum(ubc_cases) # 245
+ubc_genotypes.mx <- genotypes.mx[,ubc_cases]
+dim(ubc_genotypes.mx)
+
+# Calculate ubc ac, an and af
+ac_ubc <- apply(ubc_genotypes.mx, 1, sum, na.rm=TRUE)
+an_ubc <- apply(ubc_genotypes.mx, 1, get_allele_number.udf)
+af_ubc <- ac_ubc/an_ubc
+
+# Add updated AFs to variants.df
+variants.df <- cbind(variants.df, ac_ubc, an_ubc, af_ubc)
+
+# Clean-up
+rm(get_allele_number.udf, ubc_cases, ubc_genotypes.mx, ac_ubc, an_ubc, af_ubc)
+
+```
+
+# calculate_cbc_AFs
+
+```{r calculate_cbc_AFs}
+
+# Function to calculate AN
+get_allele_number.udf <- function(x){2*sum(!is.na(x))}
+
+# Prepare genotypes table
+cbc_cases <- phenotypes.df$cc == 1 
+sum(cbc_cases) # 235
+cbc_genotypes.mx <- genotypes.mx[,cbc_cases]
+dim(cbc_genotypes.mx)
+
+# Calculate cbc ac, an and af
+ac_cbc <- apply(cbc_genotypes.mx, 1, sum, na.rm=TRUE)
+an_cbc <- apply(cbc_genotypes.mx, 1, get_allele_number.udf)
+af_cbc <- ac_cbc/an_cbc
+
+# Add updated AFs to variants.df
+variants.df <- cbind(variants.df, ac_cbc, an_cbc, af_cbc)
+
+# Clean-up
+rm(get_allele_number.udf, cbc_cases, cbc_genotypes.mx, ac_cbc, an_cbc, af_cbc)
+
+```
+
+# explore_hwe
+
+echo=FALSE, message=FALSE, warning=FALSE  
+
+```{r explore_hwe, results='hide', echo=FALSE, message=FALSE, warning=FALSE}
+
+library(HardyWeinberg)
+
+x <- MakeCounts(t(genotypes.mx),coding=c(0,1,2))
+dim(x)
+x[1:25,]
+
+y <- HWExactStats(x[,1:3], verbose=FALSE)
+
+# Select common variants
+common_variants <- variants.df$af_all > 0.05 & variants.df$af_all < 0.95
+sum(common_variants) # 48,574
+
+# Bonferroni threshold - too relaxed (EZ)
+th <- 1/length(y)
+th # ~4e-6
+hwe_violators <- y < th
+sum(hwe_violators) # 724
+
+th <- 0.00005 # Arbitrary convention between 5e-4 5e-5 (EZ)
+hwe_violators <- y < th
+sum(hwe_violators) # 801
+qqunif.plot(y[!hwe_violators & common_variants], 
+            main=paste("Common variants, excluding HWE violaters",
+                       "\nexclusion threthold:", th, 
+                       "\n excluded",sum(hwe_violators), "of", 
+                       format(length(y), big.mark=",")))
+
+th <- 0.0001 # Arbitrary convention between 5e-4 5e-5 (EZ)
+hwe_violators <- y < th
+sum(hwe_violators) # 827
+qqunif.plot(y[!hwe_violators & common_variants], 
+            main=paste("Common variants, excluding HWE violaters",
+                       "\nexclusion threthold:", th, 
+                       "\n excluded",sum(hwe_violators), "of", 
+                       format(length(y), big.mark=",")))
+
+th <- 0.0005 # Arbitrary convention between 5e-4 5e-5 (EZ)
+hwe_violators <- y < th
+sum(hwe_violators) # 918
+qqunif.plot(y[!hwe_violators & common_variants], 
+            main=paste("Common variants, excluding HWE violaters",
+                       "\nexclusion threthold:", th, 
+                       "\n excluded",sum(hwe_violators), "of", 
+                       format(length(y), big.mark=",")))
+
+th <- 0.001 # Stricter than arbitrary convention between 5e-4 5e-5 (EZ)
+hwe_violators <- y < th
+sum(hwe_violators) # 983
+qqunif.plot(y[!hwe_violators & common_variants], 
+            main=paste("Common variants, excluding HWE violaters",
+                       "\nexclusion threthold:", th, 
+                       "\n excluded",sum(hwe_violators), "of", 
+                       format(length(y), big.mark=",")))
+
+th <- 0.005 # Stricter than arbitrary convention between 5e-4 5e-5 (EZ)
+hwe_violators <- y < th
+sum(hwe_violators) # 1,954
+qqunif.plot(y[!hwe_violators & common_variants], 
+            main=paste("Common variants, excluding HWE violaters",
+                       "\nexclusion threthold:", th, 
+                       "\n excluded",format(sum(hwe_violators), big.mark=","), "of", 
+                       format(length(y), big.mark=",")))
+
+th <- 0.0001 # Arbitrary between 5e-4 5e-5, EZ
+hwe_violators <- y < th
+sum(hwe_violators)
+
+z <- x[!hwe_violators & common_variants, 1:3]
+
+HWQqplot(z, logplot=TRUE, pvaluetype="selome", 
+         main="Q-Q Plot for HWE (w/o violators, common)")
+
+# Plot 1/y against variants locations? 
+# it seems that there could be spacial clusters of low p-values
+
+```
+
+# end_time
+
+```{r end_time}
+
+# Time stamp
+Sys.time()
+
+```
+

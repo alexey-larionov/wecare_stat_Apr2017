@@ -1,0 +1,465 @@
+---
+title: "calculate_eigenvectors_wecare_nfe_Apr2017"
+output: html_document
+---
+
+started: Alexey Larionov, 2016  
+last updated: Alexey Larionov, 03Apr2017
+
+# Summary
+
+Eigenvectors are calculated using **42,250** common variants only:  
+5% < AF  < 95% in each of the compared datasets (WECARE and NFE)  
+
+Overall, eigenvectors are calculated for 3 datasets:  
+
+- wecare-only
+- wecare-nfe (using overlap wecare and nfe)
+- wecare-nfe-50kgen (using overlap wecare, nfe and kgen50)  
+
+This script deals with wecare-nfe dataset 
+
+Requires f01_calculate_eigenvectors.R  
+
+Input data: 275,516 vars x 728 cases (480 wecare + 198 nfe + 50 kgen50)  
+Output data: 275,516 vars x 678 cases (480 wecare + 198 nfe)  
+
+# start_section
+
+```{r start_section}
+
+# Time stamp
+Sys.time()
+
+# Folders
+#/analysis/mtgroup_share
+#/scratch/medgen
+setwd("/analysis/mtgroup_share/scripts/wecare_stat_04.17/scripts")
+source_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/source_data"
+interim_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/interim_data"
+results_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/results"
+
+# Required libraries
+library(ggplot2)
+library(plotly)
+
+```
+
+# load_data
+
+```{r load_data}
+
+load(paste(interim_data_folder, "r05_add_kgen50_Apr2017.RData", sep="/"))
+
+```
+
+# check_data
+
+728 samples = 480 wecare + 198 nfe + 50 kgen50  
+
+```{r check_data}
+
+ls()
+
+dim(genotypes.mx)
+class(genotypes.mx)
+genotypes.mx[1:5, 1:5]
+
+dim(phenotypes.df)
+str(phenotypes.df)
+phenotypes.df[1:5, 1:5]
+
+dim(variants.df)
+str(variants.df)
+variants.df[1:5,1:5]
+
+dim(kgen.df)
+str(kgen.df)
+kgen.df[1:5,1:5]
+
+dim(exac.df)
+str(exac.df)
+exac.df[1:5,1:5]
+
+# Check consistence of rownames in kgen50_gt.mx and kgen50_vcf.df
+sum(rownames(genotypes.mx) != rownames(variants.df))
+sum(rownames(genotypes.mx) != rownames(kgen.df))
+sum(rownames(genotypes.mx) != rownames(exac.df))
+
+sum(colnames(genotypes.mx) != rownames(phenotypes.df))
+
+```
+
+# make_wecare_nfe_subset_of_data
+
+keep 678 wecare-nfe cases: 480 wecare + 198 nfe
+
+```{r make_wecare_only_subset_of_data}
+
+# Remove nfe cases
+wecare_nfe_cases <- as.vector(phenotypes.df[phenotypes.df$cc > -2,"wes_id"])
+length(wecare_nfe_cases) # 678
+
+wecare_nfe_genotypes.mx <- genotypes.mx[,wecare_nfe_cases]
+dim(wecare_nfe_genotypes.mx) # 275,516 x 678
+wecare_nfe_genotypes.mx[1:5,1:5]
+
+wecare_nfe_phenotypes.df <- phenotypes.df[wecare_nfe_cases,]
+dim(wecare_nfe_phenotypes.df) # 678 x 32
+wecare_nfe_phenotypes.df[1:5,1:5]
+
+wecare_nfe_variants.df <- variants.df
+wecare_nfe_exac.df <- exac.df
+wecare_nfe_kgen.df <- kgen.df
+
+# Clean-up
+rm(wecare_nfe_cases, genotypes.mx, phenotypes.df, variants.df, exac.df, kgen.df)
+
+```
+
+# check_for_variants_with_uniform_genotypes_accross_all_wecare_nfe_samples
+
+There should be no such variants because they were removed earlier,  
+when generated wecare-nfe dataset
+
+```{r check_for_variants_with_uniform_genotypes_accross_all_wecare_nfe_samples}
+
+# Check that there is no all-NA variants 
+# (this is assumed for some downstream calculations)
+non_NA_count.udf <- function(x){sum(!is.na(x))}
+all_NA <- apply(wecare_nfe_genotypes.mx, 1, non_NA_count.udf) == 0
+sum(all_NA) # 0
+
+# Function to detect uniform numeric vector
+uniform_vector.udf <- function(x){
+  if(min(x, na.rm=TRUE) == max(x, na.rm=TRUE)){return(TRUE)} else {return(FALSE)}}
+
+# Variants with uniform genotypes accross all samples 
+uniform_genotypes <- apply(wecare_nfe_genotypes.mx, 1, uniform_vector.udf)
+summary(uniform_genotypes)
+sum(uniform_genotypes) # 0
+
+# Clean-up
+rm(non_NA_count.udf, all_NA, uniform_vector.udf, uniform_genotypes)
+
+```
+
+# recalculate_total_AFs
+
+Used for selecting variants for eigenvectors computation.  
+Could be recalculated later after exclusion of eigenvectors outliers.  
+
+```{r recalculate_total_AFs}
+
+# Function to calculate AN
+get_allele_number.udf <- function(x){2*sum(!is.na(x))}
+
+# Rename AF fields in the variants table
+vars_colnames <- colnames(wecare_nfe_variants.df)
+"ac_raw" -> vars_colnames[ vars_colnames == "AC" ]
+"an_raw" -> vars_colnames[ vars_colnames == "AN" ]
+"af_raw" -> vars_colnames[ vars_colnames == "AF" ]
+vars_colnames -> colnames(wecare_nfe_variants.df)
+
+# --- Calculate total AFs --- #
+
+ac_all <- apply(wecare_nfe_genotypes.mx, 1, sum, na.rm=TRUE)
+an_all <- apply(wecare_nfe_genotypes.mx, 1, get_allele_number.udf)
+af_all <- ac_all/an_all
+
+# Ceck AFs 
+# (note that uniform variants were excluded)
+ac_all[1:10]
+an_all[1:10]
+af_all[1:10]
+
+min(ac_all)
+min(an_all)
+min(af_all)
+
+max(ac_all)
+max(an_all)
+max(af_all)
+
+# Add new AFs to the variants table
+wecare_nfe_variants.df <- cbind(wecare_nfe_variants.df, ac_all, an_all, af_all)
+
+# Clean-up
+rm(vars_colnames, ac_all, an_all, af_all)
+
+```
+
+# calculate_nfe_AFs
+
+```{r calculate_nfe_AFs}
+
+# Function to calculate AN
+get_allele_number.udf <- function(x){2*sum(!is.na(x))}
+
+# Prepare genotypes table
+nfe_cases <- wecare_nfe_phenotypes.df$cc == -1 
+sum(nfe_cases) # 198
+nfe_genotypes.mx <- wecare_nfe_genotypes.mx[,nfe_cases]
+dim(nfe_genotypes.mx)
+
+# Calculate ubc ac, an and af
+ac_nfe <- apply(nfe_genotypes.mx, 1, sum, na.rm=TRUE)
+an_nfe <- apply(nfe_genotypes.mx, 1, get_allele_number.udf)
+af_nfe <- ac_nfe/an_nfe
+
+# Add updated AFs to wecare_variants.df
+wecare_nfe_variants.df <- cbind(wecare_nfe_variants.df, ac_nfe, an_nfe, af_nfe)
+
+# Clean-up
+rm(get_allele_number.udf, nfe_cases, nfe_genotypes.mx, ac_nfe, an_nfe, af_nfe)
+
+```
+
+# calculate_wecare_AFs
+
+```{r calculate_wecare_AFs}
+
+# Function to calculate AN
+get_allele_number.udf <- function(x){2*sum(!is.na(x))}
+
+# Prepare genotypes table
+wecare_cases <- wecare_nfe_phenotypes.df$cc > -1 
+sum(wecare_cases) # 480
+wecare_genotypes.mx <- wecare_nfe_genotypes.mx[,wecare_cases]
+dim(wecare_genotypes.mx)
+
+# Calculate ubc ac, an and af
+ac_wecare <- apply(wecare_genotypes.mx, 1, sum, na.rm=TRUE)
+an_wecare <- apply(wecare_genotypes.mx, 1, get_allele_number.udf)
+af_wecare <- ac_wecare/an_wecare
+
+# Add updated AFs to wecare_variants.df
+wecare_nfe_variants.df <- cbind(wecare_nfe_variants.df, ac_wecare, an_wecare, af_wecare)
+
+# Clean-up
+rm(get_allele_number.udf, wecare_cases, wecare_genotypes.mx, ac_wecare, an_wecare, af_wecare)
+
+```
+
+# calculate_eigenvectors
+
+Only common variants will be used for eigenvectors calculation.  
+
+Note exclusion on both sides: low- and high- AFs:  
+- Low AFs remove rare variants with common allele in reference genome  
+- Hight AFs remove rare variants with common allele in reference genome  
+
+```{r calculate_eigenvectors}
+
+# --- Make subset of data for eigenvectors calculation --- #
+
+# Select wecare-nfe overlap variants
+
+nfe_common_vars <- wecare_nfe_variants.df$af_nfe > 0.05 & wecare_nfe_variants.df$af_nfe < 0.95
+sum(nfe_common_vars) # 45,232
+
+wecare_common_vars <- wecare_nfe_variants.df$af_wecare > 0.05 & wecare_nfe_variants.df$af_wecare < 0.95
+sum(wecare_common_vars) # 44,524
+
+common_overlap_vars <- nfe_common_vars & wecare_common_vars
+sum(common_overlap_vars) # 42,250
+
+# Make the subset of data
+common_overlap_wecare_nfe_genotypes.mx <- wecare_nfe_genotypes.mx[common_overlap_vars,]
+dim(common_overlap_wecare_nfe_genotypes.mx)
+common_overlap_wecare_nfe_genotypes.mx[1:5,1:5]
+
+# --- Calculate eigenvectors --- #
+
+source("f01_calculate_eigenvectors.R")
+wecare_nfe.eigen <- normalise_and_calculate_eigenvectors.udf(common_overlap_wecare_nfe_genotypes.mx)
+
+# Clean-up
+rm(common_overlap_vars, wecare_common_vars, nfe_common_vars, cbc_common_vars, ubc_common_vars, 
+   normalise_and_calculate_eigenvectors.udf, common_overlap_wecare_nfe_genotypes.mx)
+
+```
+
+# plot_eigenvectors
+
+```{r plot_eigenvectors}
+
+# --- Prepare data for plotting --- #
+
+wecare_nfe.eigenvectors.df <- as.data.frame(wecare_nfe.eigen$vectors) # eigenvectors in columns
+
+# Prepare cases lables
+cases_labels <- as.vector(wecare_nfe_phenotypes.df$cc)
+"NFE" -> cases_labels[cases_labels==-1]
+"UBC" -> cases_labels[cases_labels==0]
+"CBC" -> cases_labels[cases_labels==1]
+
+summary(as.factor(cases_labels))
+
+# Cases IDs (for labels on interactive plot)
+cases_IDs <- as.vector(wecare_nfe_phenotypes.df$wes_id)
+
+# Prepare colour scale
+colours <- c("NFE" = "BLUE", "UBC" = "PINK", "CBC" = "RED")
+userColourScale <- scale_colour_manual(values=colours)
+
+# Data frame to plot
+data2plot.df <- cbind(cases_IDs, cases_labels, wecare_nfe.eigenvectors.df[,1:5])
+
+# --- Plot eig1 vs eig2 --- #
+
+g <- ggplot(data2plot.df, aes(V1,V2)) +
+  geom_point(aes(colour=cases_labels, text=cases_IDs)) + 
+  labs(title="wecare-nfe<br>common overlap variants (42,250 x 678)", x="eigenvector1", y="eigenvector2") +
+  userColourScale
+
+ggplotly(g)
+
+# --- Plot eig2 vs eig3 --- #
+
+g <- ggplot(data2plot.df, aes(V2,V3)) +
+  geom_point(aes(colour=cases_labels, text=cases_IDs)) + 
+  labs(title="wecare-nfe<br>common overlap variants (42,250 x 678)", x="eigenvector2", y="eigenvector3") +
+  userColourScale
+
+ggplotly(g)
+
+# --- Plot eig3 vs eig4 --- #
+
+g <- ggplot(data2plot.df, aes(V3,V4)) +
+  geom_point(aes(colour=cases_labels, text=cases_IDs)) + 
+  labs(title="wecare-nfe<br>common overlap variants (42,250 x 678)", x="eigenvector3", y="eigenvector4") +
+  userColourScale
+
+ggplotly(g)
+
+# --- Plot eig4 vs eig5 --- #
+
+g <- ggplot(data2plot.df, aes(V4,V5)) +
+  geom_point(aes(colour=cases_labels, text=cases_IDs)) + 
+  labs(title="wecare-nfe<br>common overlap variants (42,250 x 678)", x="eigenvector4", y="eigenvector5") +
+  userColourScale
+
+ggplotly(g)
+
+# --- Clean-up --- #
+
+rm(wecare_nfe.eigenvectors.df, g, data2plot.df, cases_IDs, cases_labels, colours, userColourScale)
+
+```
+
+# calculate_eigenvector_outliers_for_wecare_nfe
+
+Explore 6 standard deviations in 5 top eigenvectors  
+
+```{r calculate_eigenvector_outliers_for_wecare_nfe}
+
+wecare_nfe_eigenvectors.mx <- wecare_nfe.eigen$vectors
+
+ev1 <- wecare_nfe_eigenvectors.mx[,1]
+ev1.positive_outliers <- ev1 > mean(ev1) + 6 * sd(ev1)
+ev1.negative_outliers <- ev1 < mean(ev1) - 6 * sd(ev1)
+sum(ev1.positive_outliers)
+sum(ev1.negative_outliers)
+
+wecare_nfe_phenotypes.df$wes_id[ev1.positive_outliers]
+wecare_nfe_phenotypes.df$wes_id[ev1.negative_outliers]
+
+ev2 <- wecare_nfe_eigenvectors.mx[,2]
+ev2.positive_outliers <- ev2 > mean(ev2) + 6 * sd(ev2)
+ev2.negative_outliers <- ev2 < mean(ev2) - 6 * sd(ev2)
+sum(ev2.positive_outliers)
+sum(ev2.negative_outliers)
+
+wecare_nfe_phenotypes.df$wes_id[ev2.positive_outliers]
+wecare_nfe_phenotypes.df$wes_id[ev2.negative_outliers]
+
+ev3 <- wecare_nfe_eigenvectors.mx[,3]
+ev3.positive_outliers <- ev3 > mean(ev3) + 6 * sd(ev3)
+ev3.negative_outliers <- ev3 < mean(ev3) - 6 * sd(ev3)
+sum(ev3.positive_outliers)
+sum(ev3.negative_outliers)
+
+wecare_nfe_phenotypes.df$wes_id[ev3.positive_outliers]
+wecare_nfe_phenotypes.df$wes_id[ev3.negative_outliers]
+
+ev4 <- wecare_nfe_eigenvectors.mx[,4]
+ev4.positive_outliers <- ev4 > mean(ev4) + 6 * sd(ev4)
+ev4.negative_outliers <- ev4 < mean(ev4) - 6 * sd(ev4)
+sum(ev4.positive_outliers)
+sum(ev4.negative_outliers)
+
+wecare_nfe_phenotypes.df$wes_id[ev4.positive_outliers]
+wecare_nfe_phenotypes.df$wes_id[ev4.negative_outliers]
+
+ev5 <- wecare_nfe_eigenvectors.mx[,5]
+ev5.positive_outliers <- ev5 > mean(ev5) + 6 * sd(ev5)
+ev5.negative_outliers <- ev5 < mean(ev5) - 6 * sd(ev5)
+sum(ev5.positive_outliers)
+sum(ev5.negative_outliers)
+
+wecare_nfe_phenotypes.df$wes_id[ev5.positive_outliers]
+wecare_nfe_phenotypes.df$wes_id[ev5.negative_outliers]
+
+# Clean-up
+rm(wecare_nfe_eigenvectors.mx, 
+   ev1, ev1.positive_outliers, ev1.negative_outliers, 
+   ev2, ev2.positive_outliers, ev2.negative_outliers, 
+   ev3, ev3.positive_outliers, ev3.negative_outliers,
+   ev4, ev4.positive_outliers, ev4.negative_outliers,
+   ev5, ev5.positive_outliers, ev5.negative_outliers)
+
+```
+
+# data_summary
+
+```{r data_summary}
+
+ls()
+
+dim(wecare_nfe_genotypes.mx)
+class(wecare_nfe_genotypes.mx)
+wecare_nfe_genotypes.mx[1:5,1:5]
+
+dim(wecare_nfe_phenotypes.df)
+str(wecare_nfe_phenotypes.df)
+wecare_nfe_phenotypes.df[1:5,1:5]
+
+dim(wecare_nfe_variants.df)
+colnames(wecare_nfe_variants.df)
+wecare_nfe_variants.df[1:5,1:5]
+
+dim(wecare_nfe_kgen.df)
+colnames(wecare_nfe_kgen.df)
+wecare_nfe_kgen.df[1:5,1:5]
+
+dim(wecare_nfe_exac.df)
+colnames(wecare_nfe_exac.df)
+wecare_nfe_exac.df[1:5,1:5]
+
+str(wecare_nfe.eigen)
+
+sum(colnames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_phenotypes.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_variants.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_kgen.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_exac.df))
+
+```
+
+# save_data
+
+```{r save_data}
+
+save.image(paste(interim_data_folder, "r06b_calculate_egenvectors_wecare_nfe_Apr2017.RData", sep="/"))
+
+```
+
+# final_section
+
+```{r final_section}
+
+ls()
+sessionInfo()
+Sys.time()
+
+```

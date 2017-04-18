@@ -1,0 +1,204 @@
+---
+title: "nfe vs wecare: glm, no aggregating, no weighting, 3 ev nfe, explore"
+output: html_document
+---
+
+started: Alexey Larionov, 02Apr2017  
+last updated: Alexey Larionov, 04Apr2017  
+
+# Summary
+
+Look how number of events per gene relates to P
+
+# start_section
+
+```{r start_section}
+
+# Start time
+Sys.time()
+
+# Folders
+#/analysis/mtgroup_share
+#/scratch/medgen
+setwd("/analysis/mtgroup_share/scripts/wecare_stat_04.17/scripts")
+source_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/source_data"
+interim_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/interim_data"
+results_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/results"
+
+# Libraries & functions
+source("f03_qqunif_plot.R") # for nice qq-plots
+
+```
+
+# load_glm_data
+
+```{r load_glm_data}
+
+# Load data
+load(paste(interim_data_folder, "s08a_wecare_vs_nfe_all_vars_glm_3ev_nfe_Apr2017.RData", sep="/"))
+
+```
+
+# check_glm_data
+
+```{r check_glm_data}
+
+dim(wecare_nfe_genotypes.mx)
+class(wecare_nfe_genotypes.mx)
+wecare_nfe_genotypes.mx[1:5,1:5]
+
+dim(wecare_nfe_genotypes_inv.mx)
+class(wecare_nfe_genotypes_inv.mx)
+wecare_nfe_genotypes_inv.mx[1:5,1:5]
+
+dim(wecare_nfe_kgen.df)
+colnames(wecare_nfe_kgen.df)
+wecare_nfe_kgen.df[1:5,1:5]
+
+dim(wecare_nfe_exac.df)
+colnames(wecare_nfe_exac.df)
+wecare_nfe_exac.df[1:5,1:5]
+
+dim(wecare_nfe_variants.df)
+str(wecare_nfe_variants.df)
+wecare_nfe_variants.df[1:5,1:5]
+
+dim(wecare_nfe_variants_inv.df)
+str(wecare_nfe_variants_inv.df)
+wecare_nfe_variants_inv.df[1:5,1:5]
+
+dim(wecare_nfe_phenotypes.df)
+str(wecare_nfe_phenotypes.df)
+wecare_nfe_phenotypes.df[1:5,1:5]
+
+dim(result.df)
+str(result.df)
+result.df[1:5,]
+
+# Check consistency of rownames and colnames
+sum(colnames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_phenotypes.df))
+
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_kgen.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_exac.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_variants.df))
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_variants_inv.df))
+
+sum(rownames(wecare_nfe_genotypes.mx) != rownames(wecare_nfe_genotypes_inv.mx))
+sum(colnames(wecare_nfe_genotypes.mx) != colnames(wecare_nfe_genotypes_inv.mx))
+
+```
+
+# explore_ac
+
+```{r explore_ac}
+
+# --- explore AC --- #
+hist(wecare_nfe_variants_inv.df$ac_all)
+hist(wecare_nfe_variants_inv.df$ac_all[wecare_nfe_variants_inv.df$ac_all<11], 
+     breaks=c(0:10), labels=TRUE, ylim=c(0,200000))
+
+# --- prepare data --- #
+
+# sync ac with inv. variants - something srange is going here
+x <- rownames(wecare_nfe_variants_inv.df)
+y <- result.df[x,]
+result.df <- 
+
+# Add ac to results
+result.df <- cbind(result.df, ac_inv=wecare_nfe_variants_inv.df$ac_inv)
+
+# Make indices for ac thresholds
+ac_10 <- result.df$ac_inv > 10
+ac_20 <- result.df$ac_inv > 20
+ac_40 <- result.df$ac_inv > 40
+ac_80 <- result.df$ac_inv > 80
+
+sum(ac_10)
+sum(ac_20)
+sum(ac_40)
+sum(ac_80)
+
+# --- lrt vs wald --- #
+
+plot(p_glm_lrt~p_glm_wald, data=result.df,
+     main=paste("wecare vs nfe: all vars, glm, 3ev nfe\n274,037 variants x 676 cases"))
+
+plot(p_glm_lrt~p_glm_wald, data=result.df[ac_10,],
+     main=paste("wecare vs nfe: all vars, glm, 3ev nfe\nac >10,", sum(ac_10), "variants x 676 cases"))
+
+plot(p_glm_lrt~p_glm_wald, data=result.df[ac_20,],
+     main=paste("wecare vs nfe: all vars, glm, 3ev nfe\nac >20,", sum(ac_20), "variants x 676 cases"))
+
+plot(p_glm_lrt~p_glm_wald, data=result.df[ac_40,],
+     main=paste("wecare vs nfe: all vars, glm, 3ev nfe\nac >40,", sum(ac_40), "variants x 676 cases"))
+
+plot(p_glm_lrt~p_glm_wald, data=result.df[ac_80,],
+     main=paste("wecare vs nfe: all vars, glm, 3ev nfe\nac >80,", sum(ac_80), "variants x 676 cases"))
+
+# --- p vs ac --- #
+
+plot(p_glm_lrt~ac_inv, data=result.df, 
+     main=paste("wecare vs nfe: all vars, glm, 3ev nfe\n 274,037 variants x 676 cases"))
+
+plot(p_glm_lrt~ac_inv, data=result.df[ac_80,],
+     main=paste("wecare vs nfe: all vars, glm, 3ev nfe\nac >80,", sum(ac_80), "variants x 676 cases"))
+
+# --- lrt qq-plots --- #
+
+qqunif.plot(result.df$p_glm_lrt[ac_10 & result.df$p_glm_lrt != 0], 
+     main=paste("wecare vs nfe: all vars, glm-lrt, 3ev nfe\nac >10,", sum(ac_10), "variants x 676 cases"))
+  
+qqunif.plot(result.df$p_glm_lrt[ac_20 & result.df$p_glm_lrt != 0], 
+     main=paste("wecare vs nfe: all vars, glm-lrt, 3ev nfe\nac >20,", sum(ac_20), "variants x 676 cases"))
+
+qqunif.plot(result.df$p_glm_lrt[ac_40 & result.df$p_glm_lrt != 0], 
+     main=paste("wecare vs nfe: all vars, glm-lrt, 3ev nfe\nac >40,", sum(ac_40), "variants x 676 cases"))
+
+qqunif.plot(result.df$p_glm_lrt[ac_80 & result.df$p_glm_lrt != 0], 
+     main=paste("wecare vs nfe: all vars, glm-lrt, 3ev nfe\nac >80,", sum(ac_80), "variants x 676 cases"))
+
+x <- result.df[ac_80 & result.df$p_glm_lrt != 0,]
+x <- x[order(x[,"p_glm_lrt"]),]
+x[1:20,]
+
+qqunif.plot(result.df$p_glm_lrt[ac_80 & result.df$p_glm_lrt > 0.0000022], 
+     main="wecare vs nfe: all vars, glm-lrt, 3ev nfe\nac >80, w/o top 260 variants")
+
+sum(result.df$p_glm_lrt <= 0.0000022)
+sum(result.df$p_glm_lrt == 0)
+
+# --- wald qq-plots --- #
+
+qqunif.plot(result.df$p_glm_wald[ac_10 & result.df$p_glm_wald != 0], 
+     main=paste("wecare vs nfe: all vars, glm-wald, 3ev nfe\nac >10,", sum(ac_10), "variants x 676 cases"))
+  
+qqunif.plot(result.df$p_glm_wald[ac_20 & result.df$p_glm_wald != 0], 
+     main=paste("wecare vs nfe: all vars, glm-wald, 3ev nfe\nac >20,", sum(ac_20), "variants x 676 cases"))
+
+qqunif.plot(result.df$p_glm_wald[ac_40 & result.df$p_glm_wald != 0], 
+     main=paste("wecare vs nfe: all vars, glm-wald, 3ev nfe\nac >40,", sum(ac_40), "variants x 676 cases"))
+
+qqunif.plot(result.df$p_glm_wald[ac_80 & result.df$p_glm_wald != 0], 
+     main=paste("wecare vs nfe: all vars, glm-wald, 3ev nfe\nac >80,", sum(ac_80), "variants x 676 cases"))
+
+rm(x, ac_10, ac_20, ac_40, ac_80)
+
+```
+
+# save_data
+
+```{r save_data}
+
+save.image(paste(interim_data_folder, "r08a_explore_wecare_vs_nfe_all_vars_glm_3ev_nfe_Apr2017.RData", sep="/"))
+
+```
+
+# final_section
+
+```{r final_section}
+
+ls()
+sessionInfo()
+Sys.time()
+
+```

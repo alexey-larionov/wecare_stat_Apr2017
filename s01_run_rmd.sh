@@ -3,13 +3,8 @@
 # run_rmd.sh
 # Run Rmd file in batch mode on Darwin cluster
 # Started: Alexey Larionov, 09Mar2017
-# Last updated: Alexey Larionov, 09Mar2017
+# Last updated: Alexey Larionov, 03Apr2017
 
 # Use: run_rmd.sh script.Rmd
-# Note: the script must end by .Rmd  
-
-# Compile R expressions to run (commnds are in single line, separated by semicolon)
-r_expressions="library('rmarkdown'); render('"${r_script}"')"
-
-# Run R expressions
-"${r}" -e "${r_expressions}"
+/usr/lib/R/bin/exec/R --slave --no-slave --no-restore -e "rmarkdown::render(${1})" &> log1.txt
+ 
