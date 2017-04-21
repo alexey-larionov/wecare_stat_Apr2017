@@ -1,0 +1,518 @@
+---
+title: "SKAT_wecare_only_with_accessory_fields"
+output: html_document
+---
+
+started: Alexey Larionov, 27Mar2017  
+last updated: Alexey Larionov, 19Apr2017  
+
+# Summary
+
+SKAT cbc vs ubc, wecare only  
+Runs ~10 min
+
+# start_section
+
+```{r start_section}
+
+# Start time
+Sys.time()
+
+# Folders
+#/analysis/mtgroup_share
+#/scratch/medgen
+setwd("/analysis/mtgroup_share/scripts/wecare_stat_04.17/scripts/wecare_only")
+source_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/source_data"
+interim_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/scripts/wecare_only/interim_data"
+results_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/scripts/wecare_only/results"
+
+# Libraries & functions
+library(SKAT)
+source("f02_tryCatchAL.R") # for custom error handling
+source("f03_qqunif_plot.R") # for nice qq-plots
+
+```
+
+# load_data
+
+```{r load_data}
+
+load(paste(interim_data_folder, "s08_filter_by_variant_effect_wecare_only.RData", sep="/"))
+
+```
+
+# check_data
+
+```{r check_data}
+
+dim(genotypes.mx)
+class(genotypes.mx)
+genotypes.mx[1:5,1:5]
+
+dim(genes.df)
+class(genes.df)
+genes.df[1:5,]
+
+dim(kgen.df)
+colnames(kgen.df)
+kgen.df[1:5,1:5]
+
+dim(exac.df)
+colnames(exac.df)
+exac.df[1:5,1:5]
+
+dim(variants.df)
+str(variants.df)
+variants.df[1:5,1:5]
+
+dim(phenotypes.df)
+str(phenotypes.df)
+phenotypes.df[1:5,1:5]
+
+# Check consistency of rownames and colnames
+sum(colnames(genotypes.mx) != rownames(phenotypes.df))
+
+sum(rownames(genotypes.mx) != rownames(kgen.df))
+sum(rownames(genotypes.mx) != rownames(exac.df))
+sum(rownames(genotypes.mx) != rownames(variants.df))
+
+```
+
+# prepare_data_for_analysis
+
+No missed data in outcomes, covariates or eigenvectors  
+Impute missed data for genotypes  
+
+```{r prepare_data_for_analysis}
+
+# Outcomes
+Y <- phenotypes.df$cc
+sum(is.na(Y)) # 0
+
+# Genotypes: transpose non-aggregated variants
+G <- t(genotypes.mx)
+
+# DO NOT impute missed data (they are handled by SKAT)
+#G <- apply(G, 2, function(v) { ifelse(is.na(v), mean(v, na.rm=T), v) })
+sum(is.na(G))/(ncol(G)*nrow(G)) # ~2.7%
+
+# Eigenvectors
+E <- as.matrix(phenotypes.df[,c("eig1","eig2")])
+sum(is.na(E)) # 0
+
+# Treatment
+hormone <- phenotypes.df$hormone
+chemo <- phenotypes.df$chemo_cat != "no"
+treatment <- as.integer(chemo | hormone)
+sum(is.na(treatment)) # 0
+
+# Number of pregnancies
+num_preg <- as.integer(phenotypes.df$num_preg)
+sum(is.na(num_preg)) # 0
+
+# Lobular pathology - excluded because of a missed vcalue?
+#lobular <- phenotypes.df$hist_cat == "lobular"
+#sum(is.na(lobular)) # 1
+
+# Covariates: 
+C <- cbind(treatment, num_preg)
+sum(is.na(C)) # 0
+
+# Genes
+genes=genes.df$genes
+sum(is.na(genes)) # 0
+
+# Clean-up
+rm(chemo, hormone, treatment, num_preg) # lobular
+
+```
+
+# outputs_headers
+
+```{r outputs_headers}
+
+# Prepare header
+header=c("gene", "num_var", 
+         "svt_p", "svt_msg", "svt_info", "svt_is_accurate", "svt_map", 
+         "burden_p", "burden_msg", "burden_info",  "burden_is_accurate", "burden_map", 
+         "skat_p", "skat_msg", "skat_info", "skat_is_accurate", "skat_map")
+
+# Write header to output matrix 
+# (do not use data frame here: it may cause issues with rbind)
+result.mx <- matrix(ncol=17, nrow=0) 
+colnames(result.mx) <- header
+
+# Write header to output file
+results_file="r09a_SKAT_wecare_only.txt"
+write(paste(header, sep="", collapse="\t"), 
+      file=paste(results_folder, results_file, sep="/"))
+
+# Clean-up
+rm(header)
+
+```
+
+# SKAT
+
+~3hrs for method.bin = "ER" (to use QQPlot and conf)  
+
+!! is.accurate and MAP are only valid for for resampling methods (ER and ER.A) !!  
+    
+```{r SKAT}
+
+# Calculate SKAT null model (the same for all genes and all tests)
+skat_null <- SKAT_Null_Model(Y ~ C + E, out_type="D")
+# D for the dichotomous outcome
+
+#genes <- genes[1:100]
+
+# For each gene
+for(gene in genes){
+
+  #gene="ATM" # 14 variants
+  #gene="GABRD" # 1 variant
+  
+  # Get variants
+  vars <- as.vector(variants.df[variants.df$SYMBOL==gene, "SplitVarID"])
+  
+  # Get number of variants
+  num_vars <- length(vars)
+    
+  # Get vector of genotypes  
+  X <- G[,vars]
+
+  # --- Calculate SKAT tests --- #
+  
+  # If there is one variant only
+  if(num_vars == 1){
+
+    # Aggregating variants (burden or skat) is irelevant
+    burden_p <- NA
+    burden_msg <- NA
+    burden_info <- NA
+    burden_is_accurate <- NA
+    burden_map <- NA
+    
+    skat_p <- NA
+    skat_msg <- NA
+    skat_info <- NA
+    skat_is_accurate <- NA
+    skat_map <- NA
+
+    # --- Calculate test for single variant --- #
+    # (catch result and informatin about erors/warnings - see details in tryCarchAL function)
+    
+    svt <- tryCatchAL(SKATBinary_Single(X, skat_null, method.bin = "ER"))
+
+    # Informatin about erors/warnings 
+    # (see details in tryCarchAL function)
+    svt_msg <- svt$msg
+    
+    # Compile output values
+    if(svt_msg == "error"){
+      svt_p <- NA
+      svt_is_accurate <- NA
+      svt_map <- NA
+      svt_info <- svt$error$message
+    }
+    
+    if(svt_msg == "warning"){
+      svt_p <- svt$value$p.value
+      svt_is_accurate <- svt$value$is.accurate
+      svt_map <- svt$value$MAP
+      svt_info <- svt$warning$message
+    }
+    
+    if(svt_msg == "succeeded"){
+      svt_p <- svt$value$p.value
+      svt_is_accurate <- svt$value$is.accurate
+      svt_map <- svt$value$MAP
+      svt_info <- NA
+    }
+
+    # Clean-up
+    rm(svt)
+    
+  # If there are several variants in the gene  
+  }else{
+    
+    # Single-variant test is irrelevant
+    svt_p <- NA
+    svt_is_accurate <- NA
+    svt_map <- NA
+    svt_msg <- NA
+    svt_info <- NA
+        
+    # --- Calculate burden test with default weights beta[1,25] --- #
+    # (catch result and informatin about erors/warnings - see details in tryCarchAL function)
+    
+    burden_test <- tryCatchAL(SKATBinary(X, skat_null, method="Burden", method.bin = "ER"))
+
+    # Informatin about erors/warnings 
+    # (see details in tryCarchAL function)
+    burden_msg <- burden_test$msg
+    
+    # Check is.accurate for resampling methods ??
+    
+    # Compile output values
+    if(burden_msg == "error"){
+      burden_p <- NA
+      burden_is_accurate <- NA
+      burden_map <- NA
+      burden_info <- burden_test$error$message
+    }
+    
+    if(burden_msg == "warning"){
+      burden_p <- burden_test$value$p.value
+      burden_is_accurate <- burden_test$value$is.accurate
+      burden_map <- burden_test$value$MAP
+      burden_info <- burden_test$warning$message
+    }
+    
+    if(burden_msg == "succeeded"){
+      burden_p <- burden_test$value$p.value
+      burden_is_accurate <- burden_test$value$is.accurate
+      burden_map <- burden_test$value$MAP
+      burden_info <- NA
+    }
+
+    # Clean-up
+    rm(burden_test)
+
+    # --- Calculate SKAT variance-based test with default weights beta[1,25] --- #
+    # (catch result and informatin about erors/warnings - see details in tryCarchAL function)
+    
+    skat_test <- tryCatchAL(SKATBinary(X, skat_null, method="SKAT", method.bin = "ER"))
+
+    # Informatin about erors/warnings 
+    # (see details in tryCarchAL function)
+    skat_msg <- skat_test$msg
+    
+    # Check is.accurate for resampling methods ??
+    
+    # Compile output values
+    if(skat_msg == "error"){
+      skat_p <- NA
+      skat_is_accurate <- NA
+      skat_map <- NA
+      skat_info <- skat_test$error$message
+    }
+    
+    if(skat_msg == "warning"){
+      skat_p <- skat_test$value$p.value
+      skat_is_accurate <- skat_test$value$is.accurate
+      skat_map <- skat_test$value$MAP
+      skat_info <- skat_test$warning$message
+    }
+    
+    if(skat_msg == "succeeded"){
+      skat_p <- skat_test$value$p.value
+      skat_is_accurate <- skat_test$value$is.accurate
+      skat_map <- skat_test$value$MAP
+      skat_info <- NA
+    }
+
+    # Clean-up
+    rm(skat_test)
+    
+  }
+  
+  # Add result to file
+  write(paste(c(gene, num_vars, 
+                svt_p, svt_msg, svt_info, svt_is_accurate, svt_map, 
+                burden_p, burden_msg, burden_info, burden_is_accurate, burden_map, 
+                skat_p, skat_msg, skat_info, skat_is_accurate, skat_map), 
+              sep="", collapse="\t"), 
+        file=paste(results_folder, results_file, sep="/"), append = TRUE)
+  
+  # Save results to matrix
+  result.mx <- rbind(result.mx, c(gene, num_vars, 
+                svt_p, svt_msg, svt_info, svt_is_accurate, svt_map, 
+                burden_p, burden_msg, burden_info, burden_is_accurate, burden_map, 
+                skat_p, skat_msg, skat_info, skat_is_accurate, skat_map))
+
+  # Clean-up
+  rm(vars, num_vars, X, 
+     svt_p, svt_msg, svt_info, svt_is_accurate, svt_map, 
+     burden_p, burden_msg, burden_info, burden_is_accurate, burden_map, 
+     skat_p, skat_msg, skat_info, skat_is_accurate, skat_map)
+
+} # next gene
+
+# explore result
+dim(result.mx)
+
+# Clean-up
+rm(Y, G, E, C, gene, genes, skat_null, tryCatchAL)
+
+```
+
+# explore_result
+
+```{r explore_result}
+
+# 
+d <- read.table("/analysis/mtgroup_share/scripts/wecare_stat_04.17/scripts/wecare_only/results/r09_SKAT_wecare_only.txt", header=TRUE, sep="\t")
+
+# Cojnvert p estimates to numeric
+result.df <- as.data.frame(result.mx)
+result.df$gene <- as.vector(result.df$gene)
+result.df$num_var <- as.integer(as.vector(result.df$num_var))
+result.df$svt_p <- as.double(as.vector(result.df$svt_p))
+result.df$svt_is_accurate <- as.logical(as.vector(result.df$svt_is_accurate))
+result.df$svt_map <- as.double(as.vector(result.df$svt_map))
+result.df$burden_p <- as.double(as.vector(result.df$burden_p))
+result.df$burden_is_accurate <- as.logical(as.vector(result.df$burden_is_accurate))
+result.df$burden_map <- as.double(as.vector(result.df$burden_map))
+result.df$skat_p <- as.double(as.vector(result.df$skat_p))
+result.df$skat_is_accurate <- as.logical(as.vector(result.df$skat_is_accurate))
+result.df$skat_map <- as.double(as.vector(result.df$skat_map))
+
+# Check 
+dim(result.df)
+str(result.df)
+
+# --- Compare p-estimates --- #
+
+mean_p_values <- 
+  c(mean(result.df$svt_p, na.rm=TRUE), 
+    mean(result.df$burden_p, na.rm=TRUE),
+    mean(result.df$skat_p, na.rm=TRUE))
+names(mean_p_values) <- c("single","burden","skat")
+barplot(mean_p_values, main="Compare mean p-values")
+
+plot(result.df$burden_p, result.df$skat_p, 
+     main="P-values: Burden vs SKAT",
+     xlab="Burden", ylab="SKAT")
+#abline(0,1,col="red",lwd=3)
+
+cor.test(result.df$burden_p, result.df$skat_p)
+
+# --- QQ-plots --- #
+
+# Remove NAs (required by qqunif.plot)
+svt_p <- result.df$svt_p[!is.na(result.df$svt_p)]
+svt_map <- result.df$svt_map[!is.na(result.df$svt_map)]
+
+burden_p <- result.df$burden_p[!is.na(result.df$burden_p)]
+burden_map <- result.df$burden_map[!is.na(result.df$burden_map)]
+
+skat_p <- result.df$skat_p[!is.na(result.df$skat_p)]
+skat_map <- result.df$skat_map[!is.na(result.df$skat_map)]
+
+# Combine svt with burden/skat
+svt_burden_p <- ifelse(is.na(result.df$svt_p), result.df$burden_p, result.df$svt_p)
+sum(is.na(svt_burden_p))
+
+svt_burden_map <- ifelse(is.na(result.df$svt_map), result.df$burden_map, result.df$svt_map)
+sum(is.na(svt_burden_map))
+
+svt_skat_p <- ifelse(is.na(result.df$svt_p), result.df$skat_p, result.df$skat_p)
+sum(is.na(svt_skat_p))
+
+svt_skat_map <- ifelse(is.na(result.df$svt_map), result.df$skat_map, result.df$skat_map)
+sum(is.na(svt_skat_map))
+
+# Unadjusted qq plots
+qqunif.plot(svt_p, main="CBC vs UBC: Single variant test")
+qqunif.plot(burden_p, main="CBC vs UBC: Burden\ngenes with >1 variant")
+qqunif.plot(skat_p, main="CBC vs UBC: SKAT\ngenes with >1 variant")
+
+qqunif.plot(svt_burden_p[!is.na(svt_burden_p)], main="CBC vs UBC: SVT + Burden\nall 9,117 genes")
+qqunif.plot(svt_skat_p[!is.na(svt_skat_p)], main="CBC vs UBC: SVT + SKAT\nall 9,117 genes")
+
+# SKAT-adjusted qq plots
+QQPlot_Adj(svt_p, svt_map, main="CBC vs UBC: Single variant test")
+QQPlot_Adj(burden_p, burden_map, main="CBC vs UBC: Burden\ngenes with >1 variant")
+QQPlot_Adj(skat_p, skat_map, main="CBC vs UBC: SKAT\ngenes with >1 variant")
+
+QQPlot_Adj(svt_burden_p, svt_burden_map, main="CBC vs UBC: SVT + Burden\nall 9,117 genes")
+QQPlot_Adj(svt_skat_p, svt_skat_map, main="CBC vs UBC: SVT + SKAT\nall 9,117 genes")
+
+# --- Look at the genes with >10 aggregated events --- #
+
+selected_genes <- genes.df$counts_per_gene >= 10
+sum(selected_genes)
+
+svt_burden_p_selected <- svt_burden_p[selected_genes]
+svt_burden_map_selected <- svt_burden_map[selected_genes]
+
+svt_skat_p_selected <- svt_skat_p[selected_genes]
+svt_skat_map_selected <- svt_skat_map[selected_genes]
+
+# Unadjusted qq plots
+qqunif.plot(svt_burden_p_selected, main="CBC vs UBC: SVT + Burden\n2,171 genes (aggr counts >= 10)")
+qqunif.plot(svt_skat_p_selected, main="CBC vs UBC: SVT + SKAT\n2,171 genes (aggr counts >= 10)")
+
+# SKAT-adjusted qq plots
+QQPlot_Adj(svt_burden_p_selected, svt_burden_map_selected, main="CBC vs UBC: SVT + Burden\n2,171 genes (aggr counts >= 10)")
+QQPlot_Adj(svt_skat_p_selected, svt_skat_map_selected, main="CBC vs UBC: SVT + SKAT\n2,171 genes (aggr counts >= 10)")
+
+# --- Clean-up --- #
+
+rm(mean_p_values, result.mx, 
+   svt_p, svt_map, burden_p, burden_map, skat_p, skat_map, 
+   svt_burden_p, svt_burden_map, svt_burden_p_selected, svt_burden_map_selected,
+   svt_skat_p, svt_skat_map, svt_skat_p_selected, svt_skat_map_selected, 
+   qqunif.plot, results_file)
+
+```
+
+# data_summary
+
+```{r data_summary}
+
+dim(genotypes.mx)
+class(genotypes.mx)
+genotypes.mx[1:5,1:5]
+
+dim(genes.df)
+class(genes.df)
+genes.df[1:5,]
+
+dim(kgen.df)
+colnames(kgen.df)
+kgen.df[1:5,1:5]
+
+dim(exac.df)
+colnames(exac.df)
+exac.df[1:5,1:5]
+
+dim(variants.df)
+str(variants.df)
+variants.df[1:5,1:5]
+
+dim(phenotypes.df)
+str(phenotypes.df)
+phenotypes.df[1:5,1:5]
+
+dim(result.df)
+str(result.df)
+result.df[1:5,1:5]
+
+# Check consistency of rownames and colnames
+sum(colnames(genotypes.mx) != rownames(phenotypes.df))
+
+sum(rownames(genotypes.mx) != rownames(kgen.df))
+sum(rownames(genotypes.mx) != rownames(exac.df))
+sum(rownames(genotypes.mx) != rownames(variants.df))
+
+```
+
+# save_results
+
+```{r save_results}
+
+save.image(paste(results_folder, "r09a_SKAT_wecare_only.RData", sep="/"))
+
+```
+
+# final_section
+
+```{r final_section}
+
+ls()
+sessionInfo()
+Sys.time()
+
+```
