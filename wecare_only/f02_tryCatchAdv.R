@@ -1,7 +1,7 @@
 # Function for handling errorsa and warnings  
 # Motivated by demo(error.catching)  
 # Started: Alexey Larionov, 09Mar2017  
-# Last updated: Alexey Larionov, 19Apr2017  
+# Last updated: Alexey Larionov, 25Apr2017  
 
 # Description:
 # Tries to execute an expression. 
@@ -12,7 +12,7 @@
 # - warning message (if generated, NA if no warning)  
 
 # Notes:
-# 1) The function does NOT expect simulteneous error+warning.  
+# 1) The function does NOT handle simulteneous error+warning(s) or multiple warnings.  
 #    This may need to be dealt with later - see (*)  
 # 2) Sometime errors are not generated when expected,  
 #    this cannot be handled with tryCatch, e.g:  
@@ -28,21 +28,20 @@
 # tryCatchAL(chisq.test(matrix(c(1,2,3,4,5,6), nrow=2)))  
 # tryCatchAL(1/0) # succeded - the result is num Inf !  
 
-tryCatchAL <- function(expr)
+tryCatchAdv <- function(expr)
 {
   
   # Initial settings
   V <- NA
-  M <- "succeeded"
-  W <- NA
-  E <- NA
+  S <- "succeeded"
+  M <- NA
   
   # Warning handler
   w.handler <- function(w){
     
     # Record information about warning
-    M <<- "warning"
-    W <<- w
+    S <<- "warning"
+    M <<- w
     # <<- is used for assignment outside the function scope (i.e. in the external environment)
     # http://stackoverflow.com/questions/2628621/how-do-you-use-scoping-assignment-in-r
     
@@ -55,8 +54,8 @@ tryCatchAL <- function(expr)
   e.handler <- function(e){
     
     # Record information about error
-    M <<- "error"
-    E <<- e
+    S <<- "error"
+    M <<- e
     
     # Return NA as result
     return(NA)
@@ -68,7 +67,6 @@ tryCatchAL <- function(expr)
   
   # Return value
   list(value = V,
-       msg = M,
-       warning = W,
-       error = E)
+       status = S,
+       message = M)
 }
