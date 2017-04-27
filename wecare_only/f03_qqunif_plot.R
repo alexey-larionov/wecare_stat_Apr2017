@@ -1,4 +1,16 @@
+# The below qqunif.plot() function is taken from this link in Apr2017:
 # http://genome.sph.umich.edu/wiki/Code_Sample:_Generating_QQ_Plots_in_R
+
+# The function assumes that distribution of P-values under null hypothesis shoulod be uniform. 
+# This is a common believe, which is widely usd in practice:
+# http://physics.rockefeller.edu/luc/technical_reports/cdf8023_facts_about_p_values.pdf
+# http://www.gettinggeneticsdone.com/2014/05/qqman-r-package-for-qq-and-manhattan-plots-for-gwas-results.html 
+
+# However, it may not always be true for genomic data, especially with low alleles counts, e.g. see  
+# https://www.ncbi.nlm.nih.gov/pubmed/?term=26363037
+
+# Comments by Alexey Larionov, 27Apr2017
+
 library(lattice)
 qqunif.plot<-function(pvalues, 
                       should.thin=T, thin.obs.places=2, thin.exp.places=2, 

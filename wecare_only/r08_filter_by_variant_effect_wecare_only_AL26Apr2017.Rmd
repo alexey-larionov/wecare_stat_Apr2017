@@ -4,7 +4,7 @@ output: html_document
 ---
 
 started: Alexey Larionov, 2016  
-last updated: Alexey Larionov, 18Apr2017
+last updated: Alexey Larionov, 26Apr2017
 
 # Summary
 
@@ -38,6 +38,9 @@ However, they will need special treatment in downstream analysis.
 
 ## NOT excluding multiallelic variaints  
 424 multiallelic varaints in selected  
+
+Explores the selected variants: AFs, numbers of variants and  
+aggregated MACs per gene etc  
 
 Input data: 244,502 vars x 478 cases (245 UBC and 233 CBC)  
 Output data: 18,551 vars x 478 cases (245 UBC and 233 CBC)  
@@ -544,33 +547,6 @@ summary(variants.df$Multiallelic) # 424
 
 ```
 
-# count_variants_per_gene
-
-```{r count_variants_per_gene}
-
-# Get number of genes
-length(unique(variants.df$SYMBOL)) # 9,117
-
-# Look at the top genes
-x <- sort(table(as.vector(variants.df$SYMBOL)), decreasing = TRUE)
-x[1:200]
-
-# Save table of counts
-y <- cbind(names(x),x)
-c("gene","count") -> colnames(y)
-write.table(y, file=paste(results_folder, "wecare_variants_per_gene.txt", sep="/"), quote = FALSE, row.names = FALSE)
-
-# Plot histogram
-z <- variants.df %>%  group_by(SYMBOL) %>% summarise(n())
-"vars_count" -> colnames(z)[2]
-hist(z$vars_count, main="Histogram for numbers of protein-affecting variants per gene (wecare-only)", xlab="Variants per gene", ylab="Number of genes", ylim=c(0,8000), breaks=25, labels = TRUE)
-mean(z$vars_count) # ~2.0
-
-# Clean-up
-rm(x,y,z)
-
-```
-
 # explore_AFs_in_selected_variants
 
 Most of selected variants are rare (median ~0.1%)
@@ -586,16 +562,76 @@ hist(variants.df[variants.df$af_all<0.01,"af_all"],
 
 ```
 
-# calculate_aggregated_counts_per_gene
+# explore_variants_counts_per_gene
 
-```{r calculate_aggregated_counts_per_gene}
+```{r explore_variants_counts_per_gene}
+
+# Get number of genes
+length(unique(variants.df$SYMBOL)) # 9,117
+
+# Look at the top genes with high counts of variants
+x <- sort(table(as.vector(variants.df$SYMBOL)), decreasing = TRUE)
+x[1:200]
+
+# Table for histogram of numbers of protein-affecting variants per gene 
+# (not sure whether group_by preserves the order of genes etc, 
+# but this is not important here)
+y <- variants.df %>% group_by(SYMBOL) %>% summarise(n())
+"vars_count" -> colnames(y)[2]
+
+# Plot the histogram
+hist(y$vars_count, main="Histogram for numbers of protein-affecting variants per gene (wecare-only)", xlab="Variants per gene", ylab="Number of genes", ylim=c(0,8000), breaks=25, labels = TRUE)
+
+# Mean number of variants per gene
+mean(y$vars_count) # ~2.0
+
+# Clean-up
+rm(x,y)
+
+```
+
+# explore_aggregated_MACs_per_gene
+
+For variants with **total** AF>0.5  MACs are calculated after genotypes inversion.  
+
+This is done here for interim exploration only.  
+Inversion of genotypes for analysis is done later as described below.  
+
+For SKAT analysis genotype flipping is hidden within SKAT-package functions  
+(script *r09_SKAT_wecare_only_AL20Apr2017.Rmd*).  
+SKAT flips genotypes using **total AFs** (it never asks what group  
+is case and what is control). Thus I use this aggregated MACs in  
+the SKAT summary table.  However, occasionally this may difer from the  
+"effective" MAC actually used in the internal SKAT calculations  
+(e.g. if a variant was discarde by SKAT because of high NA rate,  
+which is extremely rare in our data). This is why I keep this  
+interim exploration results at the end of this script.  
+
+For matched (clogit) analysis genotypes inversion is dine explicitly in  
+script *r10_invert_impute_weight_aggregate_wecare_only_AL26Apr2017.Rmd*  
+In this script I invert genotypes using **controls' (ubc) AFs**  
+
+In practice, using **total** or **controls'** AFs does not make any difference  
+because the number of inverted variants is very small.  Moreover, the number  
+of Variants where **total AF** and  **controls' AF** are on the opposite sides  
+of 0.5 is even smaller; such variants are common (AF ~0.5), have very low  
+weights in aggregation, and they are likely to be balanced in cases vs controls.  
+
+```{r explore_aggregated_MACs_per_gene}
 
 # Get list of genes
 genes <- unique(as.character(as.vector(variants.df$SYMBOL)))
+length(genes)
 
-# Make matrix for aggregated counts in wecare-nfe
-genes.mx <- matrix(ncol=ncol(genotypes.mx),nrow=0)
-colnames(genes.mx) <- colnames(genotypes.mx)
+# Make empty matrix for the aggregated data
+genes_aggr_data.mx <- matrix(ncol=ncol(genotypes.mx),nrow=0)
+colnames(genes_aggr_data.mx) <- colnames(genotypes.mx)
+
+# Make matrix for variants' counts per gene
+genes_aggr_info.mx <- matrix(ncol=2, nrow=length(genes))
+genes -> genes_aggr_info.mx[,1]
+genes -> rownames(genes_aggr_info.mx)
+colnames(genes_aggr_info.mx) <- c("gene", "num_vars")
 
 # Invert genotypes with total AF > 0.5
 genotypes_inv.mx <- genotypes.mx
@@ -611,71 +647,85 @@ for(var in 1:nrow(variants.df)){
   }
 }
 
-# Calculate counts per gene 
+# Calculate aggregated counts per gene 
 for(gene in genes){
   
+  # Get the gene's variants
   vars <- variants.df$SYMBOL == gene
   
-  if(sum(vars)==1){
+  # Record the number of variants
+  num_vars <- sum(vars)
+  num_vars -> genes_aggr_info.mx[gene,"num_vars"]
+  
+  # For single-variant genes
+  if(num_vars==1){
     
-    counts <- genotypes_inv.mx[vars,] # preserves NA
+    # Nothing to aggregate
+    counts <- genotypes_inv.mx[vars,] # vector, preserves NA
     0 -> counts[is.na(counts)] # equivalent to na.rm=TRUE below
     
+  # For genes with multiple varians
   }else{
     
+    # Sum alleles in the variants 
     counts <- apply(genotypes_inv.mx[vars,], 2, sum, na.rm=TRUE)
     
   }
   
-  genes.mx <- rbind(genes.mx, counts)
-  rm(vars,counts)
+  # Add result to output table
+  genes_aggr_data.mx <- rbind(genes_aggr_data.mx, counts)
+  
+  # Clean-up
+  rm(vars, num_vars, counts)
   
 }
 
 # Matrix with aggregated inverted counts per gene per case (non-weighted!)
-dim(genes.mx)
-genes -> rownames(genes.mx)
-genes.mx[1:5,1:5]
+dim(genes_aggr_data.mx)
+genes -> rownames(genes_aggr_data.mx)
+genes_aggr_data.mx[1:5,1:5]
 
 # Aggregated counts per gene
-counts_per_gene <- apply(genes.mx, 1, sum,na.rm=TRUE)
-genes -> names(counts_per_gene)
+aggregated_MAC <- apply(genes_aggr_data.mx, 1, sum,na.rm=TRUE)
 
-# Data frame with aggregated counts per gene for all cases
-genes.df <- data.frame(genes, counts_per_gene)
-genes.df$genes <- as.character(as.vector(genes.df$genes))
-genes -> rownames(genes.df)
+# Data frame with num_var-s and aggregated MACs for all genes
+genes_aggr_info.df <- as.data.frame(cbind(genes_aggr_info.mx, aggregated_MAC))
+genes_aggr_info.df$gene <- as.vector(genes_aggr_info.df$gene)
+genes_aggr_info.df$num_vars <- as.numeric(as.vector(genes_aggr_info.df$num_vars))
+genes_aggr_info.df$aggregated_MAC <- as.numeric(as.vector(genes_aggr_info.df$aggregated_MAC))
 
-str(genes.df)
-genes.df[1:5,]
-genes.df[genes.df$genes=="ATM",]
-genes.df[genes.df$genes=="CHEK2",]
+# Explore result
+str(genes_aggr_info.df)
+genes_aggr_info.df[1:5,]
+genes_aggr_info.df[genes_aggr_info.df$gene=="ATM",]
+genes_aggr_info.df[genes_aggr_info.df$gene=="CHEK2",]
 
 # Genes with frequent protein-affecting variants
-x <- counts_per_gene[order(-counts_per_gene)]
+x <- aggregated_MAC[order(-aggregated_MAC)]
 mean(x) # ~29
 median(x) # 2
 x[1:100]
 
-hist(counts_per_gene, labels = TRUE, ylim=c(0,10000), 
-     xlab="aggregated counts per gene (bins)", ylab="num of genes")
+# Histograms of aggregated MACs
+hist(aggregated_MAC, labels = TRUE, ylim=c(0,10000), 
+     xlab="aggregated MACs per gene (bins)", ylab="num of genes")
 
-hist(counts_per_gene[counts_per_gene<26], breaks=c(0:25), 
-     labels = TRUE, ylim=c(0,4000), main="zoom to <25 alleles (per 478 cases)", 
-     xlab="aggregated count per gene", ylab="num of genes")$counts
+hist(aggregated_MAC[aggregated_MAC<26], breaks=c(0:25), 
+     labels = TRUE, ylim=c(0,4000), main="zoom to MAC < 25 (per 478 cases)", 
+     xlab="aggregated MACs per gene", ylab="num of genes")$counts
 
-# Counts > 100 (> 10% aggregated events frequency) - too common ??
-sum(counts_per_gene > 100) # 692 - include anyway
-# all are early onset BC, weighting will take care of the "common" component?
-
-# Counts < 10 (< 1% aggregated events frequency) - too rare for detection
-sum(counts_per_gene < 10) # 6,946
+# Counts < 10 (< 1% aggregated MAF) - too rare for analysis ??
+sum(aggregated_MAC < 10) # 6,946
 
 # Genes that may be analysed
-sum(counts_per_gene >= 10) # 2,171 (ATM=24; CHEK2=14) ignore the > 100?
+sum(aggregated_MAC >= 10) # 2,171 (ATM=24; CHEK2=14) ignore the > 100?
+
+# Aggregated MACs > 100 (~ >10% aggregated MAF) - too common for being pathogenic ??
+sum(aggregated_MAC > 100) # 692 - include anyway, all are early onset BC
+# Weighting will take care of the "common" variants in multi-variant genes?
 
 # Clean-up
-rm(genes.mx, genes, gene, genotypes_inv.mx, counts_per_gene, var, x)
+rm(genes_aggr_data.mx, genes_aggr_info.mx, genes, gene, genotypes_inv.mx, aggregated_MAC, var, x)
 
 ```
 
@@ -687,9 +737,9 @@ dim(genotypes.mx)
 class(genotypes.mx)
 genotypes.mx[1:5,1:5]
 
-dim(genes.df)
-class(genes.df)
-genes.df[1:5,]
+dim(genes_aggr_info.df)
+class(genes_aggr_info.df)
+genes_aggr_info.df[1:5,]
 
 dim(kgen.df)
 colnames(kgen.df)

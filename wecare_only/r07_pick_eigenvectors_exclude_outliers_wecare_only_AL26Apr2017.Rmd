@@ -4,7 +4,7 @@ output: html_document
 ---
 
 started: Alexey Larionov, 16Feb2017  
-last updated: Alexey Larionov, 18Apr2017
+last updated: Alexey Larionov, 26Apr2017
 
 # Summary
 
@@ -19,13 +19,12 @@ last updated: Alexey Larionov, 18Apr2017
 
 Input data: 246,232 vars x 480 cases (245 UBC and 235 CBC)  
 Output data: 244,502 vars x 478 cases (245 UBC and 233 CBC)  
-
-  of them:
-    83 CBC-Fam  
-    150 CBC-noFam  
-    71 UBC-Fam  
-    174 UBC-noFam  
-    225 matched CBC-UBC pairs  
+of them:  
+- 83 CBC-Fam  
+- 150 CBC-noFam  
+- 71 UBC-Fam  
+- 174 UBC-noFam  
+- 225 matched CBC-UBC pairs  
 
 # start_section
 
@@ -148,7 +147,7 @@ wecare_wes_phenotypes.df$filter <- as.character(as.vector(wecare_wes_phenotypes.
 "eigenvectors_outlier" -> wecare_wes_phenotypes.df[eig_outliers,"filter"]
 
 # Write down the updated phenotype file
-write.table(wecare_wes_phenotypes.df, file=paste(results_folder, "wecare_phenotypes.txt", sep="/"), quote=FALSE, sep="\t")
+write.table(wecare_wes_phenotypes.df, file=paste(results_folder, "r07_wecare_phenotypes.txt", sep="/"), quote=FALSE, sep="\t")
 
 # Clean-up
 rm(eig_outliers, id, cols_2add, eigs_2add.mx, wecare_wes_phenotypes.df, overlapped_cases)

@@ -121,7 +121,7 @@ $(document).ready(function () {
 
 
 <p>started: Alexey Larionov, 16Feb2017<br />
-last updated: Alexey Larionov, 18Apr2017</p>
+last updated: Alexey Larionov, 26Apr2017</p>
 <div id="summary" class="section level1">
 <h1>Summary</h1>
 <ul>
@@ -132,18 +132,19 @@ last updated: Alexey Larionov, 18Apr2017</p>
 <li><p>Recalculate allelic frequencies</p></li>
 </ul>
 <p>Input data: 246,232 vars x 480 cases (245 UBC and 235 CBC)<br />
-Output data: 244,502 vars x 478 cases (245 UBC and 233 CBC)</p>
-<p>of them: 83 CBC-Fam<br />
-150 CBC-noFam<br />
-71 UBC-Fam<br />
-174 UBC-noFam<br />
-225 matched CBC-UBC pairs</p>
+Output data: 244,502 vars x 478 cases (245 UBC and 233 CBC)<br />
+of them:<br />
+- 83 CBC-Fam<br />
+- 150 CBC-noFam<br />
+- 71 UBC-Fam<br />
+- 174 UBC-noFam<br />
+- 225 matched CBC-UBC pairs</p>
 </div>
 <div id="start_section" class="section level1">
 <h1>start_section</h1>
 <pre class="r"><code># Time stamp
 Sys.time()</code></pre>
-<pre><code>## [1] &quot;2017-04-18 15:40:17 BST&quot;</code></pre>
+<pre><code>## [1] &quot;2017-04-27 10:37:54 BST&quot;</code></pre>
 <pre class="r"><code># Folders
 #/analysis/mtgroup_share
 #/scratch/medgen
@@ -404,7 +405,7 @@ wecare_wes_phenotypes.df$filter &lt;- as.character(as.vector(wecare_wes_phenotyp
 &quot;eigenvectors_outlier&quot; -&gt; wecare_wes_phenotypes.df[eig_outliers,&quot;filter&quot;]
 
 # Write down the updated phenotype file
-write.table(wecare_wes_phenotypes.df, file=paste(results_folder, &quot;wecare_phenotypes.txt&quot;, sep=&quot;/&quot;), quote=FALSE, sep=&quot;\t&quot;)
+write.table(wecare_wes_phenotypes.df, file=paste(results_folder, &quot;r07_wecare_phenotypes.txt&quot;, sep=&quot;/&quot;), quote=FALSE, sep=&quot;\t&quot;)
 
 # Clean-up
 rm(eig_outliers, id, cols_2add, eigs_2add.mx, wecare_wes_phenotypes.df, overlapped_cases)</code></pre>
@@ -872,7 +873,7 @@ rm(cbc_nofam_cases, cbc_nofam_genotypes.mx, ac_cbc_nofam,
 ##  [9] rmarkdown_1.3   knitr_1.15.1    stringr_1.2.0   digest_0.6.12  
 ## [13] evaluate_0.10</code></pre>
 <pre class="r"><code>Sys.time()</code></pre>
-<pre><code>## [1] &quot;2017-04-18 15:41:18 BST&quot;</code></pre>
+<pre><code>## [1] &quot;2017-04-27 10:38:55 BST&quot;</code></pre>
 </div>
 
 

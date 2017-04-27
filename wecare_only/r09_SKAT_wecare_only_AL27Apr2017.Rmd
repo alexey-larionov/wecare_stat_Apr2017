@@ -4,7 +4,7 @@ output: html_document
 ---
 
 started: Alexey Larionov, 27Mar2017  
-last updated: Alexey Larionov, 20Apr2017  
+last updated: Alexey Larionov, 27Apr2017  
 
 # Summary
 
@@ -12,12 +12,13 @@ SKAT cbc vs ubc, wecare only
 
 Efficient Resampling (ER) is used because this is the most accurate (?) method for  
 P-assessment from small counts in SKAT package (Lee et al Biostatistics 2016)  
-However, Efficient Resampling may become computationally heavy for larger number of samples...  
+However, Efficient Resampling may become computationally heavy for large numbers of samples...  
 
-~5hrs for method.bin = "ER" (for is.accurate, MAP and adjusted QQPlot)  
-~10 min with default method.bin (= "Hybrid"; using ER only for counts < 20?)  
+Time to run:  
+~3-55hrs for method.bin = "ER" (for is.accurate, MAP and adjusted QQPlot)  
+~10-15 min with default method.bin (= "Hybrid"; using ER only for counts < 20?)  
 
-is.accurate and MAP are only valid for for resampling methods (ER or ER.A)  
+is.accurate and MAP are only reported my resampling methods (ER or ER.A)  
 
 # start_section
 
@@ -55,9 +56,9 @@ dim(genotypes.mx)
 class(genotypes.mx)
 genotypes.mx[1:5,1:5]
 
-dim(genes.df)
-class(genes.df)
-genes.df[1:5,]
+dim(genes_aggr_info.df)
+class(genes_aggr_info.df)
+genes_aggr_info.df[1:5,]
 
 dim(kgen.df)
 colnames(kgen.df)
@@ -125,7 +126,7 @@ C <- cbind(treatment, num_preg)
 sum(is.na(C)) # 0
 
 # Genes
-genes=genes.df$genes
+genes=genes_aggr_info.df$gene
 sum(is.na(genes)) # 0
 
 # Clean-up
@@ -266,47 +267,47 @@ rm(Y, G, E, C, gene, genes, skat_null)
 ```{r explore_update_and_save_result}
 
 # Convert factors to vectors
-result.df <- as.data.frame(result.mx)
-result.df$gene <- as.vector(result.df$gene)
-result.df$num_var <- as.integer(as.vector(result.df$num_var))
-result.df$svt_p <- as.double(as.vector(result.df$svt_p))
-result.df$svt_is_accurate <- as.logical(as.vector(result.df$svt_is_accurate))
-result.df$svt_map <- as.double(as.vector(result.df$svt_map))
-result.df$burden_p <- as.double(as.vector(result.df$burden_p))
-result.df$burden_is_accurate <- as.logical(as.vector(result.df$burden_is_accurate))
-result.df$burden_map <- as.double(as.vector(result.df$burden_map))
-result.df$skat_p <- as.double(as.vector(result.df$skat_p))
-result.df$skat_is_accurate <- as.logical(as.vector(result.df$skat_is_accurate))
-result.df$skat_map <- as.double(as.vector(result.df$skat_map))
+genes_aggr_skat.df <- as.data.frame(result.mx)
+genes_aggr_skat.df$gene <- as.vector(genes_aggr_skat.df$gene)
+genes_aggr_skat.df$num_var <- as.integer(as.vector(genes_aggr_skat.df$num_var))
+genes_aggr_skat.df$svt_p <- as.double(as.vector(genes_aggr_skat.df$svt_p))
+genes_aggr_skat.df$svt_is_accurate <- as.logical(as.vector(genes_aggr_skat.df$svt_is_accurate))
+genes_aggr_skat.df$svt_map <- as.double(as.vector(genes_aggr_skat.df$svt_map))
+genes_aggr_skat.df$burden_p <- as.double(as.vector(genes_aggr_skat.df$burden_p))
+genes_aggr_skat.df$burden_is_accurate <- as.logical(as.vector(genes_aggr_skat.df$burden_is_accurate))
+genes_aggr_skat.df$burden_map <- as.double(as.vector(genes_aggr_skat.df$burden_map))
+genes_aggr_skat.df$skat_p <- as.double(as.vector(genes_aggr_skat.df$skat_p))
+genes_aggr_skat.df$skat_is_accurate <- as.logical(as.vector(genes_aggr_skat.df$skat_is_accurate))
+genes_aggr_skat.df$skat_map <- as.double(as.vector(genes_aggr_skat.df$skat_map))
 
 # Check data
-dim(result.df)
-str(result.df)
-summary(result.df)
+dim(genes_aggr_skat.df)
+str(genes_aggr_skat.df)
+summary(genes_aggr_skat.df)
 
 # Exclude odd genes with high NAs (>15%) in all variants
 # HNMT, PPARGC1B, POM121L12, HEPACAM2, CCAR2, PALD1, CEP290, MVP
 # See comment about converting NULLs to NAs in the previous chunk
-odd_genes <- is.na(result.df$burden_is_accurate) & !is.na(result.df$burden_p)
-result.df[odd_genes,]
+odd_genes <- is.na(genes_aggr_skat.df$burden_is_accurate) & !is.na(genes_aggr_skat.df$burden_p)
+genes_aggr_skat.df[odd_genes,]
 
-result.df <- result.df[!odd_genes,]
-rownames(result.df) <- result.df$gene
+genes_aggr_skat.df <- genes_aggr_skat.df[!odd_genes,]
+rownames(genes_aggr_skat.df) <- genes_aggr_skat.df$gene
 
-genes.df <- genes.df[!odd_genes,]
-sum(rownames(result.df) != rownames(genes.df))
+genes_aggr_info.df <- genes_aggr_info.df[!odd_genes,]
+sum(rownames(genes_aggr_skat.df) != rownames(genes_aggr_info.df))
 
-result.df <- cbind(result.df, counts_per_gene=genes.df$counts_per_gene)
+genes_aggr_skat.df <- cbind(genes_aggr_skat.df, aggregated_MAC=genes_aggr_info.df$aggregated_MAC)
 
-str(result.df)
-summary(result.df)
+str(genes_aggr_skat.df)
+summary(genes_aggr_skat.df)
 
 # write result table to text file
 results_file <- paste(results_folder, "r09_SKAT_wecare_only.txt", sep="/")
-write.table(result.df, file=results_file, quote=FALSE, sep="\t")
+write.table(genes_aggr_skat.df, file=results_file, quote=FALSE, sep="\t")
 
 # Clean-up
-rm(odd_genes, genes.df, result.mx, results_file)
+rm(odd_genes, result.mx, results_file, genes_aggr_info.df)
 
 ```
 
@@ -316,20 +317,20 @@ rm(odd_genes, genes.df, result.mx, results_file)
 
 # svt vs burden vs skat
 mean_p_values <- 
-  c(mean(result.df$svt_p, na.rm=TRUE), 
-    mean(result.df$burden_p, na.rm=TRUE),
-    mean(result.df$skat_p, na.rm=TRUE))
-names(mean_p_values) <- c("single","burden","skat")
+  c(mean(genes_aggr_skat.df$svt_p, na.rm=TRUE), 
+    mean(genes_aggr_skat.df$burden_p, na.rm=TRUE),
+    mean(genes_aggr_skat.df$skat_p, na.rm=TRUE))
+names(mean_p_values) <- c("single", "burden", "skat")
 barplot(mean_p_values, main="Compare mean p-values")
 
 # burden vs skat
-plot(result.df$burden_p, 
-     result.df$skat_p, 
+plot(genes_aggr_skat.df$burden_p, 
+     genes_aggr_skat.df$skat_p, 
      main="P-values: Burden vs SKAT",
      xlab="Burden", ylab="SKAT")
 
-cor.test(result.df$burden_p, 
-         result.df$skat_p)
+cor.test(genes_aggr_skat.df$burden_p, 
+         genes_aggr_skat.df$skat_p)
 
 # Clean-up
 rm(mean_p_values)
@@ -341,44 +342,44 @@ rm(mean_p_values)
 ```{r qq_plots}
 
 # Remove NAs when not needed for the QQ plots
-svt_p <- result.df$svt_p[!is.na(result.df$svt_p)]
+svt_p <- genes_aggr_skat.df$svt_p[!is.na(genes_aggr_skat.df$svt_p)]
 length(svt_p) # 4,688
 summary(svt_p)
 
-svt_map <- result.df$svt_map[!is.na(result.df$svt_map)]
+svt_map <- genes_aggr_skat.df$svt_map[!is.na(genes_aggr_skat.df$svt_map)]
 length(svt_map)
 summary(svt_map)
 
-burden_p <- result.df$burden_p[!is.na(result.df$burden_p)]
+burden_p <- genes_aggr_skat.df$burden_p[!is.na(genes_aggr_skat.df$burden_p)]
 length(burden_p) # 4,421
 summary(burden_p)
 
-burden_map <- result.df$burden_map[!is.na(result.df$burden_map)]
+burden_map <- genes_aggr_skat.df$burden_map[!is.na(genes_aggr_skat.df$burden_map)]
 length(burden_map)
 summary(burden_map)
 
-skat_p <- result.df$skat_p[!is.na(result.df$skat_p)]
+skat_p <- genes_aggr_skat.df$skat_p[!is.na(genes_aggr_skat.df$skat_p)]
 length(skat_p)
 summary(skat_p)
 
-skat_map <- result.df$skat_map[!is.na(result.df$skat_map)]
+skat_map <- genes_aggr_skat.df$skat_map[!is.na(genes_aggr_skat.df$skat_map)]
 length(skat_map)
 summary(skat_map)
 
 # Combine svt with burden/skat
-svt_burden_p <- ifelse(is.na(result.df$svt_p), result.df$burden_p, result.df$svt_p)
+svt_burden_p <- ifelse(is.na(genes_aggr_skat.df$svt_p), genes_aggr_skat.df$burden_p, genes_aggr_skat.df$svt_p)
 sum(is.na(svt_burden_p))
 length(svt_burden_p)
 
-svt_burden_map <- ifelse(is.na(result.df$svt_map), result.df$burden_map, result.df$svt_map)
+svt_burden_map <- ifelse(is.na(genes_aggr_skat.df$svt_map), genes_aggr_skat.df$burden_map, genes_aggr_skat.df$svt_map)
 sum(is.na(svt_burden_map))
 length(svt_burden_map)
 
-svt_skat_p <- ifelse(is.na(result.df$svt_p), result.df$skat_p, result.df$svt_p)
+svt_skat_p <- ifelse(is.na(genes_aggr_skat.df$svt_p), genes_aggr_skat.df$skat_p, genes_aggr_skat.df$svt_p)
 sum(is.na(svt_skat_p))
 length(svt_skat_p)
 
-svt_skat_map <- ifelse(is.na(result.df$svt_map), result.df$skat_map, result.df$svt_map)
+svt_skat_map <- ifelse(is.na(genes_aggr_skat.df$svt_map), genes_aggr_skat.df$skat_map, genes_aggr_skat.df$svt_map)
 sum(is.na(svt_skat_map))
 length(svt_skat_map)
 
@@ -398,9 +399,9 @@ QQPlot_Adj(skat_p, skat_map, Is.unadjsted=FALSE, main="CBC vs UBC: SKAT\n4,421 g
 QQPlot_Adj(svt_burden_p, svt_burden_map, Is.unadjsted=FALSE, main="CBC vs UBC: SVT + Burden\nall 9,109 genes")
 QQPlot_Adj(svt_skat_p, svt_skat_map, Is.unadjsted=FALSE, main="CBC vs UBC: SVT + SKAT\nall 9,109 genes")
 
-# --- Look at the genes with >10 aggregated events --- #
+# --- Look at the genes with aggregated MAC >= 10  --- #
 
-selected_genes <- result.df$counts_per_gene >= 10
+selected_genes <- genes_aggr_skat.df$aggregated_MAC >= 10
 sum(selected_genes)
 
 svt_burden_p_selected <- svt_burden_p[selected_genes]
@@ -411,15 +412,15 @@ svt_skat_map_selected <- svt_skat_map[selected_genes]
 
 # SKAT-adjusted qq plots (with unadjusted in grey)
 QQPlot_Adj(svt_burden_p_selected, svt_burden_map_selected, 
-           main="CBC vs UBC: SVT + Burden\n2,168 genes (aggr counts >= 10)")
+           main="CBC vs UBC: SVT + Burden\n2,168 genes (aggr MAC >= 10)")
 QQPlot_Adj(svt_skat_p_selected, svt_skat_map_selected, 
-           main="CBC vs UBC: SVT + SKAT\n2,168 genes (aggr counts >= 10)")
+           main="CBC vs UBC: SVT + SKAT\n2,168 genes (aggr MAC >= 10)")
 
 # SKAT-adjusted qq plots (w/o unadjusted)
 QQPlot_Adj(svt_burden_p_selected, svt_burden_map_selected, Is.unadjsted=FALSE, 
-           main="CBC vs UBC: SVT + Burden\n2,168 genes (aggr counts >= 10)")
+           main="CBC vs UBC: SVT + Burden\n2,168 genes (aggr MAC >= 10)")
 QQPlot_Adj(svt_skat_p_selected, svt_skat_map_selected, Is.unadjsted=FALSE, 
-           main="CBC vs UBC: SVT + SKAT\n2,168 genes (aggr counts >= 10)")
+           main="CBC vs UBC: SVT + SKAT\n2,168 genes (aggr MAC >= 10)")
 
 # --- Clean-up --- #
 
@@ -454,9 +455,9 @@ dim(phenotypes.df)
 str(phenotypes.df)
 phenotypes.df[1:5,1:5]
 
-dim(result.df)
-str(result.df)
-result.df[1:5,1:5]
+dim(genes_aggr_skat.df)
+str(genes_aggr_skat.df)
+genes_aggr_skat.df[1:5,1:5]
 
 # Check consistency of rownames and colnames
 sum(colnames(genotypes.mx) != rownames(phenotypes.df))
@@ -471,7 +472,7 @@ sum(rownames(genotypes.mx) != rownames(variants.df))
 
 ```{r save_results}
 
-save.image(paste(results_folder, "r09_SKAT_wecare_only.RData", sep="/"))
+save.image(paste(interim_data_folder, "r09_SKAT_wecare_only.RData", sep="/"))
 
 ```
 
