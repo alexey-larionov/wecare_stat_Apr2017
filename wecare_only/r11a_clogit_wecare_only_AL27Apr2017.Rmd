@@ -42,7 +42,7 @@ source("f03_qqunif_plot.R") # for nice qq-plots
 
 ```{r load_data}
 
-load(paste(interim_data_folder, "s10_invert_impute_weight_aggregate_wecare_only.RData", sep="/"))
+load(paste(interim_data_folder, "r10_invert_impute_weight_aggregate_wecare_only.RData", sep="/"))
 
 ```
 
@@ -181,8 +181,8 @@ for(gene in genes){
   
   # Try clogit using advanced catching of errors/warnings
   # (see details within the tryCatchAdv() function)
-  clogit_reg <- tryCatchAdv(clogit( Y ~ X + E + C + strata(P)))
-  clogit_reg_null <- tryCatchAdv(clogit( Y ~ E + C + strata(P)))
+  clogit_reg <- tryCatchAdv(clogit(Y ~ X + E + C + strata(P), method="exact"))
+  clogit_reg_null <- tryCatchAdv(clogit(Y ~ E + C + strata(P), method="exact"))
   
   # Get status (success or error/warning) and error/warning messages (if any)
   std_clogit_status <- clogit_reg$status
@@ -227,7 +227,7 @@ for(gene in genes){
     chi_stat_lrt = 2*(logLik(clogit_reg) - logLik(clogit_reg_null))
     p_clogit_lrt = 1 - pchisq(chi_stat_lrt, df=1)
     
-    # Calculate LRT p-estimate using anova()
+    # Calculate LRT p-estimate using anova
     clogit_anova <- anova(clogit_reg_null, clogit_reg, test="LRT")
     p_clogit_anova <- clogit_anova[2,"P(>|Chi|)"]
 
@@ -315,7 +315,7 @@ summary(genes_aggr_clogit.df$appr_clogit_null_status)
 summary(genes_aggr_clogit.df$appr_clogit_null_message)
 
 # Write result to file
-output_file <- paste(results_folder, "r11a_matched_analysis_wecare_only.txt", sep="/")
+output_file <- paste(results_folder, "r11a_clogit_wecare_only.txt", sep="/")
 write.table(genes_aggr_clogit.df, file=output_file, quote=FALSE, sep="\t")
 
 # Clean-up

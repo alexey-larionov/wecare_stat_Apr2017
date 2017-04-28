@@ -12,7 +12,7 @@ glm analysis with glm on SKAT-style weighted and aggregated data
 
 - Read and check the data  
 - Perform glm analysis on weighted and aggregated data  with and without matched data
-- Write results into text file  
+- Write results into text files  
 - Compare different p-estimates  
 - Make QQ-plots  
 
@@ -32,7 +32,6 @@ interim_data_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/script
 results_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/scripts/wecare_only/results"
 
 # Load libraries and functions
-library(survival) # for glm (matched analysis)
 source("f02_tryCatchAdv.R") # advanced error handling
 source("f03_qqunif_plot.R") # for nice qq-plots
 
@@ -42,7 +41,7 @@ source("f03_qqunif_plot.R") # for nice qq-plots
 
 ```{r load_data}
 
-load(paste(interim_data_folder, "s10_invert_impute_weight_aggregate_wecare_only.RData", sep="/"))
+load(paste(interim_data_folder, "r10_invert_impute_weight_aggregate_wecare_only.RData", sep="/"))
 
 ```
 
@@ -97,7 +96,7 @@ sum(rownames(genotypes.mx) != rownames(variants.df))
 
 ```
 
-# prepare_data_for_glm_and_glm
+# prepare_data_for_analysis
 
 Verifying that there is No missed data   
 
@@ -155,7 +154,7 @@ rm(chemo, hormone, treatment, num_preg)
 
 # run_glm
 
-This chunk uns glm without matching data  
+This chunk runs glm without matching data  
 
 Using advanced error handling (see tryCatchAdv function)  
 
@@ -210,7 +209,7 @@ for(gene in genes){
   chi_stat_lrt = 2*(logLik(glm_reg) - logLik(glm_reg_null))
   p_glm_lrt = 1 - pchisq(chi_stat_lrt, df=1)
     
-  # Calculate LRT p-estimate using anova()
+  # Calculate LRT p-estimate using anova
   glm_anova <- anova(glm_reg_null, glm_reg, test="LRT")
   p_glm_anova <- glm_anova[2,"Pr(>Chi)"]
 
@@ -539,7 +538,7 @@ lrt_zero_count <- sum(p_glm_lrt==0, na.rm=TRUE)
 lrt_zero_count
 p_glm_lrt <- p_glm_lrt[!is.na(p_glm_lrt)]
 p_glm_lrt <- p_glm_lrt[p_glm_lrt != 0]
-main <- paste("CBC vs UBC: matched, glm lrt\n", 
+main <- paste("CBC vs UBC: glm lrt\n", 
               length(p_glm_lrt),"genes (",
               lrt_na_count, "NAs and",
               lrt_zero_count, "zeroes omitted)")
@@ -553,7 +552,7 @@ anova_zero_count <- sum(p_glm_anova==0, na.rm=TRUE)
 anova_zero_count
 p_glm_anova <- p_glm_anova[!is.na(p_glm_anova)]
 p_glm_anova <- p_glm_anova[p_glm_anova != 0]
-main <- paste("CBC vs UBC: matched, glm anova\n", 
+main <- paste("CBC vs UBC: glm anova\n", 
               length(p_glm_anova),"genes (",
               anova_na_count, "NAs and",
               anova_zero_count, "zeroes omitted)")
@@ -567,7 +566,7 @@ wald_zero_count <- sum(p_glm_wald==0, na.rm=TRUE)
 wald_zero_count
 p_glm_wald <- p_glm_wald[!is.na(p_glm_wald)]
 p_glm_wald <- p_glm_wald[p_glm_wald != 0]
-main <- paste("CBC vs UBC: matched, glm Wald\n", 
+main <- paste("CBC vs UBC: glm Wald\n", 
               length(p_glm_wald),"genes (",
               wald_na_count, "NAs and",
               wald_zero_count, "zeroes omitted)")
@@ -593,7 +592,7 @@ lrt_zero_count <- sum(p_glm_lrt==0, na.rm=TRUE)
 lrt_zero_count
 p_glm_lrt <- p_glm_lrt[!is.na(p_glm_lrt)]
 p_glm_lrt <- p_glm_lrt[p_glm_lrt != 0]
-main <- paste("CBC vs UBC: matched, glm M lrt\n", 
+main <- paste("CBC vs UBC: glm M lrt\n", 
               length(p_glm_lrt),"genes (",
               lrt_na_count, "NAs and",
               lrt_zero_count, "zeroes omitted)")
@@ -607,7 +606,7 @@ anova_zero_count <- sum(p_glm_anova==0, na.rm=TRUE)
 anova_zero_count
 p_glm_anova <- p_glm_anova[!is.na(p_glm_anova)]
 p_glm_anova <- p_glm_anova[p_glm_anova != 0]
-main <- paste("CBC vs UBC: matched, glm M anova\n", 
+main <- paste("CBC vs UBC: glm M anova\n", 
               length(p_glm_anova),"genes (",
               anova_na_count, "NAs and",
               anova_zero_count, "zeroes omitted)")
@@ -621,7 +620,7 @@ wald_zero_count <- sum(p_glm_wald==0, na.rm=TRUE)
 wald_zero_count
 p_glm_wald <- p_glm_wald[!is.na(p_glm_wald)]
 p_glm_wald <- p_glm_wald[p_glm_wald != 0]
-main <- paste("CBC vs UBC: matched, glm M Wald\n", 
+main <- paste("CBC vs UBC: glm M Wald\n", 
               length(p_glm_wald),"genes (",
               wald_na_count, "NAs and",
               wald_zero_count, "zeroes omitted)")

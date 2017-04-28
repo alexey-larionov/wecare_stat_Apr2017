@@ -141,7 +141,7 @@ last updated: Alexey Larionov, 27Apr2017</p>
 <h1>start_section</h1>
 <pre class="r"><code># Start time
 Sys.time()</code></pre>
-<pre><code>## [1] &quot;2017-04-27 20:51:34 BST&quot;</code></pre>
+<pre><code>## [1] &quot;2017-04-28 16:34:58 BST&quot;</code></pre>
 <pre class="r"><code># Folders
 #/analysis/mtgroup_share
 #/scratch/medgen
@@ -508,8 +508,8 @@ for(gene in genes){
   
   # Try clogit using advanced catching of errors/warnings
   # (see details within the tryCatchAdv() function)
-  clogit_reg &lt;- tryCatchAdv(clogit( Y ~ X + E + C + strata(P)))
-  clogit_reg_null &lt;- tryCatchAdv(clogit( Y ~ E + C + strata(P)))
+  clogit_reg &lt;- tryCatchAdv(clogit(Y ~ X + E + C + strata(P), method=&quot;exact&quot;))
+  clogit_reg_null &lt;- tryCatchAdv(clogit(Y ~ E + C + strata(P), method=&quot;exact&quot;))
   
   # Get status (success or error/warning) and error/warning messages (if any)
   std_clogit_status &lt;- clogit_reg$status
@@ -554,7 +554,7 @@ for(gene in genes){
     chi_stat_lrt = 2*(logLik(clogit_reg) - logLik(clogit_reg_null))
     p_clogit_lrt = 1 - pchisq(chi_stat_lrt, df=1)
     
-    # Calculate LRT p-estimate using anova()
+    # Calculate LRT p-estimate using anova
     clogit_anova &lt;- anova(clogit_reg_null, clogit_reg, test=&quot;LRT&quot;)
     p_clogit_anova &lt;- clogit_anova[2,&quot;P(&gt;|Chi|)&quot;]
 
@@ -711,7 +711,7 @@ summary(genes_aggr_clogit.df$appr_clogit_null_status)</code></pre>
 <pre><code>## NA's 
 ## 9117</code></pre>
 <pre class="r"><code># Write result to file
-output_file &lt;- paste(results_folder, &quot;r11a_matched_analysis_wecare_only.txt&quot;, sep=&quot;/&quot;)
+output_file &lt;- paste(results_folder, &quot;r11a_clogit_wecare_only.txt&quot;, sep=&quot;/&quot;)
 write.table(genes_aggr_clogit.df, file=output_file, quote=FALSE, sep=&quot;\t&quot;)
 
 # Clean-up
@@ -1172,7 +1172,7 @@ sum(colnames(genotypes.mx) != rownames(phenotypes.df))</code></pre>
 ##  [9] rmarkdown_1.3   splines_3.3.3   tools_3.3.3     stringr_1.2.0  
 ## [13] yaml_2.1.14     htmltools_0.3.5 knitr_1.15.1</code></pre>
 <pre class="r"><code>Sys.time()</code></pre>
-<pre><code>## [1] &quot;2017-04-27 20:54:41 BST&quot;</code></pre>
+<pre><code>## [1] &quot;2017-04-28 16:38:04 BST&quot;</code></pre>
 </div>
 
 

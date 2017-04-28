@@ -770,7 +770,7 @@ sum(rownames(genotypes.mx) != rownames(variants.df))
 
 ```{r save_data}
 
-save.image(paste(interim_data_folder, "s08_filter_by_variant_effect_wecare_only.RData", sep="/"))
+save.image(paste(interim_data_folder, "r08_filter_by_variant_effect_wecare_only.RData", sep="/"))
 
 ```
 

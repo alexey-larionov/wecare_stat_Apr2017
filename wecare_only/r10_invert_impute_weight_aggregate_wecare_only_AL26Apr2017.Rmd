@@ -43,7 +43,7 @@ results_folder <- "/analysis/mtgroup_share/scripts/wecare_stat_04.17/scripts/wec
 
 ```{r load_data}
 
-load(paste(interim_data_folder, "s08_filter_by_variant_effect_wecare_only.RData", sep="/"))
+load(paste(interim_data_folder, "r08_filter_by_variant_effect_wecare_only.RData", sep="/"))
 
 ```
 
@@ -595,7 +595,7 @@ sum(rownames(genotypes.mx) != rownames(variants.df))
 
 ```{r save_data}
 
-save.image(paste(interim_data_folder, "s10_invert_impute_weight_aggregate_wecare_only.RData", sep="/"))
+save.image(paste(interim_data_folder, "r10_invert_impute_weight_aggregate_wecare_only.RData", sep="/"))
 
 ```
 
